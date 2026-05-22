@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#1a365d">
+    <meta name="description" content="每日销售报表生成工具 - 快速处理ERP销售数据，生成专业报表">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>每日销售报表工具</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%231a365d' width='100' height='100' rx='15'/%3E%3Cpath fill='white' d='M20 25h60v8H20zm0 17h60v8H20zm0 17h40v8H20z'/%3E%3Ccircle fill='%234ade80' cx='75' cy='70' r='12'/%3E%3Cpath fill='white' d='M70 70l4 4 8-8' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+    <style>
+        :root {
+            --primary: #1a365d;
+            --primary-light: #2d4a7c;
+            --primary-dark: #0f2341;
+            --accent: #4ade80;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+            --bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            --shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+            --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .header p {
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+        
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        /* Upload Section */
+        .upload-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .upload-section h2 {
+            font-size: 1.125rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: var(--bg);
+        }
+        
+        .upload-area:hover, .upload-area.dragover {
+            border-color: var(--accent);
+            background: rgba(74, 222, 128, 0.05);
+        }
+        
+        .upload-area svg {
+            width: 48px;
+            height: 48px;
+            color: var(--text-light);
+            margin-bottom: 0.5rem;
+        }
+        
+        .upload-area p {
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+        
+        .upload-area .browse-btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        
+        .upload-area .browse-btn:hover {
+            background: var(--primary-light);
+        }
+        
+        #fileInput {
+            display: none;
+        }
+        
+        .file-info {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: rgba(74, 222, 128, 0.1);
+            border-radius: 6px;
+            display: none;
+        }
+        
+        .file-info.show {
+            display: block;
+        }
+        
+        .file-info .file-name {
+            font-weight: 500;
+            color: var(--primary);
+        }
+        
+        /* Data Cards */
+        .data-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+            text-align: center;
+            border-left: 4px solid var(--primary);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .stat-card.accent {
+            border-left-color: var(--accent);
+        }
+        
+        .stat-card.danger {
+            border-left-color: var(--danger);
+        }
+        
+        .stat-card .label {
+            font-size: 0.75rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stat-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .stat-card.accent .value {
+            color: var(--accent);
+        }
+        
+        .stat-card.danger .value {
+            color: var(--danger);
+        }
+        
+        /* Salesperson Cards */
+        .salesperson-section {
+            margin-bottom: 1.5rem;
+        }
+        
+        .section-title {
+            font-size: 1.125rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+        
+        .salesperson-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+        
+        .salesperson-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.25rem;
+            box-shadow: var(--shadow);
+            border-top: 3px solid var(--accent);
+        }
+        
+        .salesperson-card .name {
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .salesperson-card .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            color: var(--text-light);
+        }
+        
+        .salesperson-card .amount {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-top: 0.5rem;
+        }
+        
+        .salesperson-card .percent {
+            font-size: 0.75rem;
+            color: var(--text-light);
+        }
+        
+        /* Charts */
+        .charts-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .chart-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .chart-card h3 {
+            font-size: 1rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+        
+        /* Report Table */
+        .report-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+            overflow-x: auto;
+        }
+        
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            min-width: 600px;
+        }
+        
+        .report-table th {
+            background: var(--primary);
+            color: white;
+            padding: 0.75rem;
+            text-align: center;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        
+        .report-table td {
+            padding: 0.625rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .report-table tbody tr:hover {
+            background: rgba(26, 54, 93, 0.03);
+        }
+        
+        .report-table .subtotal-row {
+            background: linear-gradient(135deg, rgba(26, 54, 93, 0.08) 0%, rgba(45, 74, 124, 0.08) 100%);
+            font-weight: 600;
+        }
+        
+        .report-table .subtotal-row td {
+            border-top: 2px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .report-table .total-row {
+            background: var(--primary);
+            color: white;
+            font-weight: 700;
+        }
+        
+        .report-table .total-row td {
+            border-bottom: none;
+        }
+        
+        .report-table .return-item {
+            color: var(--danger);
+            background: rgba(239, 68, 68, 0.05);
+        }
+        
+        .report-table .amount-positive {
+            color: var(--accent);
+            font-weight: 500;
+        }
+        
+        .report-table .amount-negative {
+            color: var(--danger);
+            font-weight: 500;
+        }
+        
+        /* Actions */
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.875rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s ease;
+        }
+        
+        .btn svg {
+            width: 18px;
+            height: 18px;
+        }
+        
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: var(--primary-light);
+        }
+        
+        .btn-success {
+            background: var(--accent);
+            color: var(--primary-dark);
+        }
+        
+        .btn-success:hover {
+            background: #22c55e;
+        }
+        
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+        
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* History Section */
+        .history-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .history-section h2 {
+            font-size: 1.125rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+        
+        .history-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        
+        .history-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+        
+        .history-item .date {
+            font-weight: 500;
+            color: var(--primary);
+        }
+        
+        .history-item .amount {
+            color: var(--accent);
+        }
+        
+        .history-item .remove {
+            cursor: pointer;
+            color: var(--danger);
+            opacity: 0.7;
+        }
+        
+        .history-item .remove:hover {
+            opacity: 1;
+        }
+        
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            font-size: 0.875rem;
+        }
+        
+        .comparison-table th, .comparison-table td {
+            padding: 0.625rem;
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+        
+        .comparison-table th {
+            background: var(--primary);
+            color: white;
+        }
+        
+        .comparison-table .trend-up {
+            color: var(--accent);
+        }
+        
+        .comparison-table .trend-down {
+            color: var(--danger);
+        }
+        
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--text-light);
+        }
+        
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-light);
+            font-size: 0.75rem;
+            border-top: 1px solid var(--border);
+            margin-top: 2rem;
+        }
+        
+        /* Print Styles */
+        @media print {
+            .header, .upload-section, .actions, .history-section, .footer {
+                display: none !important;
+            }
+            
+            .report-section {
+                box-shadow: none;
+                padding: 0;
+            }
+            
+            body {
+                background: white;
+            }
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.25rem;
+            }
+            
+            .data-cards {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .stat-card .value {
+                font-size: 1.25rem;
+            }
+            
+            .charts-section {
+                grid-template-columns: 1fr;
+            }
+            
+            .actions {
+                flex-direction: column;
+            }
+            
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+        
+        /* Loading */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(26, 54, 93, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+        }
+        
+        .loading-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(100px);
+            background: var(--primary);
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            z-index: 10000;
+            transition: transform 0.3s ease;
+            font-size: 0.875rem;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .toast.success {
+            background: var(--accent);
+            color: var(--primary-dark);
+        }
+        
+        .toast.error {
+            background: var(--danger);
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>📊 每日销售报表工具</h1>
+        <p>快速处理ERP销售数据，生成专业报表</p>
+    </header>
+    
+    <main class="container">
+        <!-- Upload Section -->
+        <section class="upload-section">
+            <h2>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                上传ERP数据文件
+            </h2>
+            <div class="upload-area" id="uploadArea">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+                <p>将Excel文件拖拽到此处，或</p>
+                <span class="browse-btn">浏览文件</span>
+                <input type="file" id="fileInput" accept=".xls,.xlsx">
+            </div>
+            <div class="file-info" id="fileInfo">
+                <span class="file-name" id="fileName"></span>
+                <span id="fileSize"></span>
+            </div>
+        </section>
+        
+        <!-- Data Cards -->
+        <section class="data-cards" id="dataCards" style="display: none;">
+            <div class="stat-card">
+                <div class="label">查询日期</div>
+                <div class="value" id="statDate">-</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">总单数</div>
+                <div class="value" id="statOrders">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">总客户数</div>
+                <div class="value" id="statCustomers">0</div>
+            </div>
+            <div class="stat-card accent">
+                <div class="label">销售总额</div>
+                <div class="value" id="statSales">¥0</div>
+            </div>
+            <div class="stat-card danger">
+                <div class="label">退货总额</div>
+                <div class="value" id="statReturns">¥0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">净销售额</div>
+                <div class="value" id="statNet">¥0</div>
+            </div>
+        </section>
+        
+        <!-- Salesperson Section -->
+        <section class="salesperson-section" id="salespersonSection" style="display: none;">
+            <h2 class="section-title">📋 按业务员汇总</h2>
+            <div class="salesperson-grid" id="salespersonGrid"></div>
+        </section>
+        
+        <!-- Charts -->
+        <section class="charts-section" id="chartsSection" style="display: none;">
+            <div class="chart-card">
+                <h3>业务员销售额占比（饼图）</h3>
+                <div class="chart-container">
+                    <canvas id="pieChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>业务员销售额对比（柱状图）</h3>
+                <div class="chart-container">
+                    <canvas id="barChart"></canvas>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Actions -->
+        <section class="actions" id="actions" style="display: none;">
+            <button class="btn btn-success" id="btnExportExcel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                导出Excel报表
+            </button>
+            <button class="btn btn-primary" id="btnScreenshot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                </svg>
+                截图/生成图片
+            </button>
+            <button class="btn btn-outline" id="btnPrint">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 6 2 18 2 18 9"/>
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                    <rect x="6" y="14" width="12" height="8"/>
+                </svg>
+                打印报表
+            </button>
+        </section>
+        
+        <!-- Report Table -->
+        <section class="report-section" id="reportSection" style="display: none;">
+            <h2 class="section-title">📄 销售情况总表</h2>
+            <table class="report-table" id="reportTable">
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>单据日期</th>
+                        <th>单据号码</th>
+                        <th>业务员</th>
+                        <th>客户</th>
+                        <th>销售金额</th>
+                    </tr>
+                </thead>
+                <tbody id="reportBody"></tbody>
+            </table>
+        </section>
+        
+        <!-- History Comparison -->
+        <section class="history-section" id="historySection">
+            <h2>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                历史数据对比（可上传多天数据）
+            </h2>
+            <div class="upload-area" id="historyUploadArea" style="padding: 1rem;">
+                <p style="font-size: 0.75rem;">拖拽更多日期的Excel文件进行对比</p>
+                <span class="browse-btn" style="font-size: 0.75rem; padding: 0.375rem 0.75rem;">选择文件</span>
+                <input type="file" id="historyFileInput" accept=".xls,.xlsx">
+            </div>
+            <div class="history-list" id="historyList"></div>
+            <div id="comparisonResult"></div>
+        </section>
+    </main>
+    
+    <footer class="footer">
+        © 2026 每日销售报表工具 · 开发者：张洪杰 · 版权所有 · 未经授权禁止复制、传播或商业使用 · 侵权必究
+    </footer>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+    
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+    
+    <!-- External Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    
+    <script>
+        // Global State
+        let currentData = null;
+        let historyData = [];
+        let pieChart = null;
+        let barChart = null;
+        
+        // Column mapping cache
+        let columnMap = {};
+        
+        // Format currency
+        function formatCurrency(amount) {
+            return '¥' + Number(amount).toLocaleString('zh-CN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+        }
+        
+        // Format number
+        function formatNumber(num) {
+            return Number(num).toLocaleString('zh-CN');
+        }
+        
+        // Show toast
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast ' + type;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+        
+        // Show loading
+        function showLoading(show) {
+            document.getElementById('loadingOverlay').classList.toggle('show', show);
+        }
+        
+        // Find column index by possible names
+        function findColumn(headers, possibleNames) {
+            for (let i = 0; i < headers.length; i++) {
+                const header = String(headers[i] || '').trim();
+                for (const name of possibleNames) {
+                    if (header.includes(name)) {
+                        return i;
+                    }
+                }
+            }
+            return -1;
+        }
+        
+        // Smart column mapping
+        function mapColumns(headers) {
+            const map = {
+                date: findColumn(headers, ['单据日期', '日期', '出库日期', '开单日期']),
+                docNo: findColumn(headers, ['单据号码', '单号', '单据号', '单号']),
+                customer: findColumn(headers, ['客户', '客户名称', '客户名', '购货单位']),
+                amount: findColumn(headers, ['销售金额', '金额', '价税合计', '含税金额', '开票金额']),
+                salesperson: findColumn(headers, ['业务员', '销售员', '经手人', '负责人']),
+                orderNo: findColumn(headers, ['销售订单号', '订单号', '订单号码']),
+                invoiceType: findColumn(headers, ['票据类型', '发票类型', '单据类型']),
+                status: findColumn(headers, ['发票状态', '状态', '单据状态'])
+            };
+            return map;
+        }
+        
+        // Check if row is a summary row
+        function isSummaryRow(row, map) {
+            if (!row || row.length === 0) return false;
+            const firstCell = String(row[0] || '').trim();
+            const lastCell = String(row[row.length - 1] || '').trim();
+            
+            // Check for summary keywords
+            if (firstCell.includes('合计') || firstCell.includes('汇总') || 
+                firstCell.includes('小计') || lastCell.includes('合计') ||
+                firstCell.includes('共') || firstCell.includes('制表')) {
+                return true;
+            }
+            
+            // Check if all cells are empty except amount
+            if (map.amount >= 0) {
+                const amount = parseFloat(String(row[map.amount] || '0').replace(/[^\d.-]/g, ''));
+                if (isNaN(amount)) return true;
+            }
+            
+            return false;
+        }
+        
+        // Parse Excel file
+        function parseExcel(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+                        const sheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+                        resolve(jsonData);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // Process data
+        function processData(rawData) {
+            // Find the header row (row with column names)
+            let headerRowIndex = -1;
+            for (let i = 0; i < Math.min(10, rawData.length); i++) {
+                const row = rawData[i];
+                if (row && row.length > 5) {
+                    const rowStr = row.join('').toLowerCase();
+                    if (rowStr.includes('单据日期') || rowStr.includes('单据号码') || 
+                        rowStr.includes('销售金额')) {
+                        headerRowIndex = i;
+                        break;
+                    }
+                }
+            }
+            
+            if (headerRowIndex === -1) {
+                throw new Error('无法识别数据格式，请检查Excel文件结构');
+            }
+            
+            // Get headers and map columns
+            const headers = rawData[headerRowIndex];
+            columnMap = mapColumns(headers);
+            
+            if (columnMap.date === -1 || columnMap.amount === -1) {
+                throw new Error('无法识别必需的数据列（单据日期、销售金额）');
+            }
+            
+            // Extract query date
+            let queryDate = '';
+            if (headerRowIndex > 0) {
+                const dateRow = rawData[headerRowIndex - 1];
+                if (dateRow && dateRow.length > 0) {
+                    const dateStr = String(dateRow[0] || '');
+                    const match = dateStr.match(/\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/);
+                    if (match) {
+                        queryDate = match[0].replace(/\-/g, '/');
+                    }
+                }
+            }
+            
+            // Process data rows
+            const records = [];
+            for (let i = headerRowIndex + 1; i < rawData.length; i++) {
+                const row = rawData[i];
+                if (!row || row.length === 0) continue;
+                
+                // Skip summary rows
+                if (isSummaryRow(row, columnMap)) continue;
+                
+                // Get document number
+                const docNo = columnMap.docNo >= 0 ? String(row[columnMap.docNo] || '').trim() : '';
+                
+                // Skip if no document number
+                if (!docNo || docNo === 'undefined') continue;
+                
+                // Get date
+                let date = columnMap.date >= 0 ? row[columnMap.date] : '';
+                if (date) {
+                    if (typeof date === 'number') {
+                        // Excel date serial number
+                        date = new Date((date - 25569) * 86400 * 1000);
+                        date = date.toLocaleDateString('zh-CN').replace(/\//g, '/');
+                    } else {
+                        date = String(date).trim();
+                        // Format date
+                        const d = new Date(date);
+                        if (!isNaN(d.getTime())) {
+                            date = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+                        }
+                    }
+                }
+                
+                // Get amount
+                let amount = 0;
+                if (columnMap.amount >= 0) {
+                    const amountStr = String(row[columnMap.amount] || '0').replace(/[^\d.\-]/g, '');
+                    amount = parseFloat(amountStr) || 0;
+                }
+                
+                // Determine if return
+                const isReturn = docNo.toUpperCase().startsWith('XT') || amount < 0;
+                
+                // Get other fields
+                const customer = columnMap.customer >= 0 ? String(row[columnMap.customer] || '').trim() : '';
+                const salesperson = columnMap.salesperson >= 0 ? String(row[columnMap.salesperson] || '').trim() : '未分配';
+                
+                records.push({
+                    date: date,
+                    docNo: docNo,
+                    customer: customer,
+                    amount: amount,
+                    salesperson: salesperson,
+                    isReturn: isReturn
+                });
+            }
+            
+            return {
+                queryDate: queryDate,
+                records: records
+            };
+        }
+        
+        // Analyze data
+        function analyzeData(data) {
+            const { records } = data;
+            
+            // Calculate totals
+            let totalSales = 0;
+            let totalReturns = 0;
+            const customers = new Set();
+            
+            records.forEach(r => {
+                if (r.isReturn) {
+                    totalReturns += Math.abs(r.amount);
+                } else {
+                    totalSales += r.amount;
+                }
+                if (r.customer) customers.add(r.customer);
+            });
+            
+            // Group by salesperson
+            const salespersonMap = {};
+            records.forEach(r => {
+                const sp = r.salesperson || '未分配';
+                if (!salespersonMap[sp]) {
+                    salespersonMap[sp] = {
+                        name: sp,
+                        records: [],
+                        total: 0,
+                        count: 0
+                    };
+                }
+                salespersonMap[sp].records.push(r);
+                salespersonMap[sp].total += r.amount;
+                salespersonMap[sp].count++;
+            });
+            
+            // Sort by total amount
+            const sortedSalespersons = Object.values(salespersonMap).sort((a, b) => b.total - a.total);
+            
+            return {
+                date: data.queryDate,
+                totalOrders: records.length,
+                totalCustomers: customers.size,
+                totalSales: totalSales,
+                totalReturns: totalReturns,
+                netSales: totalSales - totalReturns,
+                salespersons: sortedSalespersons
+            };
+        }
+        
+        // Render UI
+        function renderUI(analysis) {
+            // Show data cards
+            document.getElementById('dataCards').style.display = 'grid';
+            document.getElementById('salespersonSection').style.display = 'block';
+            document.getElementById('chartsSection').style.display = 'grid';
+            document.getElementById('actions').style.display = 'flex';
+            document.getElementById('reportSection').style.display = 'block';
+            
+            // Update stats
+            document.getElementById('statDate').textContent = analysis.date || '-';
+            document.getElementById('statOrders').textContent = formatNumber(analysis.totalOrders);
+            document.getElementById('statCustomers').textContent = formatNumber(analysis.totalCustomers);
+            document.getElementById('statSales').textContent = formatCurrency(analysis.totalSales);
+            document.getElementById('statReturns').textContent = formatCurrency(analysis.totalReturns);
+            document.getElementById('statNet').textContent = formatCurrency(analysis.netSales);
+            
+            // Render salesperson cards
+            const grid = document.getElementById('salespersonGrid');
+            grid.innerHTML = analysis.salespersons.map(sp => `
+                <div class="salesperson-card">
+                    <div class="name">${sp.name}</div>
+                    <div class="stats">
+                        <span>${sp.count} 单</span>
+                        <span class="percent">${((sp.total / analysis.totalSales) * 100).toFixed(1)}%</span>
+                    </div>
+                    <div class="amount">${formatCurrency(sp.total)}</div>
+                </div>
+            `).join('');
+            
+            // Render charts
+            renderCharts(analysis);
+            
+            // Render report table
+            renderReportTable(analysis);
+        }
+        
+        // Render charts
+        function renderCharts(analysis) {
+            const labels = analysis.salespersons.map(sp => sp.name);
+            const values = analysis.salespersons.map(sp => sp.total);
+            const colors = [
+                '#1a365d', '#2d4a7c', '#4ade80', '#f59e0b', '#ef4444',
+                '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316'
+            ];
+            
+            // Pie Chart
+            const pieCtx = document.getElementById('pieChart').getContext('2d');
+            if (pieChart) pieChart.destroy();
+            pieChart = new Chart(pieCtx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderWidth: 2,
+                        borderColor: '#fff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: { size: 12 },
+                                padding: 10
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percent = ((value / total) * 100).toFixed(1);
+                                    return `${context.label}: ${formatCurrency(value)} (${percent}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Bar Chart
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            if (barChart) barChart.destroy();
+            barChart = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '销售额',
+                        data: values,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return formatCurrency(context.raw);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    if (value >= 10000) {
+                                        return (value / 10000).toFixed(1) + '万';
+                                    }
+                                    return value;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Render report table
+        function renderReportTable(analysis) {
+            const tbody = document.getElementById('reportBody');
+            let html = '';
+            let globalIndex = 1;
+            
+            analysis.salespersons.forEach(sp => {
+                // Sort records: sales first, then returns
+                const sortedRecords = [...sp.records].sort((a, b) => {
+                    if (a.isReturn === b.isReturn) return 0;
+                    return a.isReturn ? 1 : -1;
+                });
+                
+                sortedRecords.forEach(record => {
+                    const rowClass = record.isReturn ? 'return-item' : '';
+                    const amountClass = record.amount >= 0 ? 'amount-positive' : 'amount-negative';
+                    
+                    html += `
+                        <tr class="${rowClass}">
+                            <td>${globalIndex++}</td>
+                            <td>${record.date || '-'}</td>
+                            <td>${record.docNo}</td>
+                            <td>${record.salesperson}</td>
+                            <td>${record.customer || '-'}</td>
+                            <td class="${amountClass}">${formatCurrency(record.amount)}</td>
+                        </tr>
+                    `;
+                });
+                
+                // Subtotal row
+                html += `
+                    <tr class="subtotal-row">
+                        <td colspan="2">${sp.name} 小计</td>
+                        <td>${sp.count} 单</td>
+                        <td></td>
+                        <td></td>
+                        <td>${formatCurrency(sp.total)}</td>
+                    </tr>
+                `;
+            });
+            
+            // Total row
+            html += `
+                <tr class="total-row">
+                    <td colspan="2">合计</td>
+                    <td>${analysis.totalOrders} 单</td>
+                    <td>${analysis.totalCustomers} 个客户</td>
+                    <td></td>
+                    <td>${formatCurrency(analysis.netSales)}</td>
+                </tr>
+            `;
+            
+            tbody.innerHTML = html;
+        }
+        
+        // Export to Excel
+        function exportToExcel(analysis) {
+            const wb = XLSX.utils.book_new();
+            
+            // Prepare data
+            const data = [];
+            
+            // Title
+            data.push(['销售情况总表']);
+            
+            // Date
+            data.push([`查询日期：${analysis.date}`]);
+            
+            // Headers
+            data.push(['序号', '单据日期', '单据号码', '业务员', '客户', '销售金额']);
+            
+            let globalIndex = 1;
+            
+            analysis.salespersons.forEach(sp => {
+                // Sort records
+                const sortedRecords = [...sp.records].sort((a, b) => {
+                    if (a.isReturn === b.isReturn) return 0;
+                    return a.isReturn ? 1 : -1;
+                });
+                
+                sortedRecords.forEach(record => {
+                    data.push([
+                        globalIndex++,
+                        record.date || '',
+                        record.docNo,
+                        record.salesperson,
+                        record.customer || '',
+                        record.amount
+                    ]);
+                });
+                
+                // Subtotal
+                data.push([
+                    `${sp.name} 小计`,
+                    '',
+                    `${sp.count} 单`,
+                    '',
+                    '',
+                    sp.total
+                ]);
+            });
+            
+            // Total
+            data.push([
+                '合计',
+                '',
+                `${analysis.totalOrders} 单`,
+                `${analysis.totalCustomers} 个客户`,
+                '',
+                analysis.netSales
+            ]);
+            
+            const ws = XLSX.utils.aoa_to_sheet(data);
+            
+            // Set column widths
+            ws['!cols'] = [
+                { wch: 8 },  // 序号
+                { wch: 12 }, // 单据日期
+                { wch: 18 }, // 单据号码
+                { wch: 12 }, // 业务员
+                { wch: 20 }, // 客户
+                { wch: 15 }  // 销售金额
+            ];
+            
+            XLSX.utils.book_append_sheet(wb, ws, '销售报表');
+            
+            // Download
+            const filename = `销售情况总表_${analysis.date.replace(/\//g, '')}.xlsx`;
+            XLSX.writeFile(wb, filename);
+            showToast('Excel报表已导出', 'success');
+        }
+        
+        // Screenshot
+        async function takeScreenshot() {
+            const reportSection = document.getElementById('reportSection');
+            
+            try {
+                showLoading(true);
+                const canvas = await html2canvas(reportSection, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    logging: false,
+                    useCORS: true
+                });
+                
+                const link = document.createElement('a');
+                link.download = `销售报表_${currentData ? currentData.date.replace(/\//g, '') : ''}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                showToast('截图已保存', 'success');
+            } catch (error) {
+                console.error('Screenshot error:', error);
+                showToast('截图失败，请重试', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Add to history
+        function addToHistory(date, analysis) {
+            // Check if already exists
+            const exists = historyData.some(h => h.date === date);
+            if (exists) {
+                showToast('该日期数据已存在', 'info');
+                return;
+            }
+            
+            historyData.push({
+                date: date,
+                analysis: analysis
+            });
+            
+            renderHistoryList();
+            renderComparison();
+        }
+        
+        // Render history list
+        function renderHistoryList() {
+            const list = document.getElementById('historyList');
+            
+            if (historyData.length === 0) {
+                list.innerHTML = '<p style="color: var(--text-light); font-size: 0.875rem;">暂无历史数据</p>';
+                return;
+            }
+            
+            list.innerHTML = historyData.map((h, index) => `
+                <div class="history-item">
+                    <span class="date">${h.date}</span>
+                    <span class="amount">${formatCurrency(h.analysis.netSales)}</span>
+                    <span class="remove" onclick="removeFromHistory(${index})">✕</span>
+                </div>
+            `).join('');
+        }
+        
+        // Remove from history
+        function removeFromHistory(index) {
+            historyData.splice(index, 1);
+            renderHistoryList();
+            renderComparison();
+        }
+        
+        // Render comparison
+        function renderComparison() {
+            const result = document.getElementById('comparisonResult');
+            
+            if (historyData.length < 2) {
+                result.innerHTML = '';
+                return;
+            }
+            
+            // Sort by date
+            const sorted = [...historyData].sort((a, b) => new Date(a.date) - new Date(b.date));
+            
+            const headers = sorted.map(h => h.date);
+            const salesValues = sorted.map(h => h.analysis.totalSales);
+            const returnValues = sorted.map(h => h.analysis.totalReturns);
+            const netValues = sorted.map(h => h.analysis.netSales);
+            const orderValues = sorted.map(h => h.analysis.totalOrders);
+            
+            // Calculate trends (compare to previous)
+            const trends = sorted.map((h, i) => {
+                if (i === 0) return { sales: '-', returns: '-', net: '-', orders: '-' };
+                const prev = sorted[i - 1].analysis;
+                const curr = h.analysis;
+                return {
+                    sales: ((curr.totalSales - prev.totalSales) / prev.totalSales * 100).toFixed(1) + '%',
+                    returns: ((curr.totalReturns - prev.totalReturns) / prev.totalReturns * 100).toFixed(1) + '%',
+                    net: ((curr.netSales - prev.netSales) / prev.netSales * 100).toFixed(1) + '%',
+                    orders: ((curr.totalOrders - prev.totalOrders) / prev.totalOrders * 100).toFixed(1) + '%'
+                };
+            });
+            
+            let html = `
+                <h3 style="margin-top: 1.5rem; font-size: 1rem; color: var(--primary);">📈 数据对比分析</h3>
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>指标</th>
+                            ${headers.map(h => `<th>${h}</th>`).join('')}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>销售总额</td>
+                            ${sorted.map((h, i) => `
+                                <td>
+                                    ${formatCurrency(h.analysis.totalSales)}
+                                    ${trends[i].sales !== '-' ? `<span class="${trends[i].sales.startsWith('+') ? 'trend-up' : 'trend-down'}"> (${trends[i].sales})</span>` : ''}
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <td>退货总额</td>
+                            ${sorted.map((h, i) => `
+                                <td>
+                                    ${formatCurrency(h.analysis.totalReturns)}
+                                    ${trends[i].returns !== '-' ? `<span class="${trends[i].returns.startsWith('+') ? 'trend-down' : 'trend-up'}"> (${trends[i].returns})</span>` : ''}
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <td>净销售额</td>
+                            ${sorted.map((h, i) => `
+                                <td>
+                                    ${formatCurrency(h.analysis.netSales)}
+                                    ${trends[i].net !== '-' ? `<span class="${trends[i].net.startsWith('+') ? 'trend-up' : 'trend-down'}"> (${trends[i].net})</span>` : ''}
+                                </td>
+                            `).join('')}
+                        </tr>
+                        <tr>
+                            <td>订单数量</td>
+                            ${sorted.map((h, i) => `
+                                <td>
+                                    ${h.analysis.totalOrders} 单
+                                    ${trends[i].orders !== '-' ? `<span class="${trends[i].orders.startsWith('+') ? 'trend-up' : 'trend-down'}"> (${trends[i].orders})</span>` : ''}
+                                </td>
+                            `).join('')}
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+            
+            result.innerHTML = html;
+        }
+        
+        // Event Listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadArea = document.getElementById('uploadArea');
+            const fileInput = document.getElementById('fileInput');
+            const fileInfo = document.getElementById('fileInfo');
+            const historyUploadArea = document.getElementById('historyUploadArea');
+            const historyFileInput = document.getElementById('historyFileInput');
+            
+            // Upload area click
+            uploadArea.addEventListener('click', () => fileInput.click());
+            
+            // Drag and drop
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+            
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+            
+            uploadArea.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) await handleFile(file, true);
+            });
+            
+            // File input change
+            fileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) await handleFile(file, true);
+            });
+            
+            // History upload
+            historyUploadArea.addEventListener('click', () => historyFileInput.click());
+            historyUploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                historyUploadArea.classList.add('dragover');
+            });
+            historyUploadArea.addEventListener('dragleave', () => {
+                historyUploadArea.classList.remove('dragover');
+            });
+            historyUploadArea.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                historyUploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) await handleFile(file, false);
+            });
+            historyFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files[0];
+                if (file) await handleFile(file, false);
+            });
+            
+            // Button events
+            document.getElementById('btnExportExcel').addEventListener('click', () => {
+                if (currentData) exportToExcel(currentData);
+            });
+            
+            document.getElementById('btnScreenshot').addEventListener('click', takeScreenshot);
+            
+            document.getElementById('btnPrint').addEventListener('click', () => {
+                window.print();
+            });
+            
+            // Initialize history list
+            renderHistoryList();
+        });
+        
+        // Handle file
+        async function handleFile(file, isMain) {
+            if (!file.name.match(/\.(xls|xlsx)$/i)) {
+                showToast('请上传Excel文件(.xls或.xlsx)', 'error');
+                return;
+            }
+            
+            showLoading(true);
+            
+            try {
+                const rawData = await parseExcel(file);
+                const processedData = processData(rawData);
+                const analysis = analyzeData(processedData);
+                
+                if (isMain) {
+                    currentData = analysis;
+                    
+                    // Update file info
+                    const fileInfo = document.getElementById('fileInfo');
+                    fileInfo.classList.add('show');
+                    document.getElementById('fileName').textContent = file.name;
+                    document.getElementById('fileSize').textContent = ` (${(file.size / 1024).toFixed(1)} KB)`;
+                    
+                    // Render UI
+                    renderUI(analysis);
+                    
+                    showToast('数据加载成功', 'success');
+                } else {
+                    addToHistory(analysis.date, analysis);
+                    showToast('已添加到历史对比', 'success');
+                }
+            } catch (error) {
+                console.error('Parse error:', error);
+                showToast(error.message || '文件解析失败', 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+        
+        // Register Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('SW registered'))
+                .catch(err => console.log('SW registration failed:', err));
+        }
+    </script>
+</body>
+</html>
