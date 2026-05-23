@@ -554,48 +554,6 @@
             font-size: 48px;
             margin-bottom: 15px;
         }
-        
-        /* 替换方案样式 */
-        .replace-card {
-            background: #f7fafc;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 15px;
-            border-left: 4px solid #e53e3e;
-        }
-        
-        .replace-card h4 {
-            color: #e53e3e;
-            margin-bottom: 10px;
-            font-size: 15px;
-        }
-        
-        .replace-card p {
-            margin-bottom: 8px;
-            font-size: 13px;
-            color: #4a5568;
-        }
-        
-        .replace-option {
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-            margin-bottom: 8px;
-            border-left: 4px solid #48bb78;
-        }
-        
-        .replace-option h5 {
-            color: #38a169;
-            font-size: 14px;
-            margin-bottom: 5px;
-        }
-        
-        .replace-option p {
-            font-size: 13px;
-            color: #4a5568;
-            margin: 0;
-        }
-        
         /* 汇总页样式 */
         .summary-detail-grid {
             display: grid;
@@ -1191,7 +1149,6 @@
                 noPurchaseSummary: [],
                 reminderList: [],
                 needPurchaseList: [],
-                replaceOptions: []
             };
             
             // 过滤有效销项（排除红冲）
@@ -1439,8 +1396,6 @@
                 });
             }
             
-            // 替换方案（按发票维度，同分类优先）
-            generateReplaceOptions(result);
             
             // 按金额排序催票清单，并计算紧急程度
             result.reminderList.sort((a, b) => b.amount - a.amount);
@@ -1459,93 +1414,7 @@
             return result;
         }
         
-        // 生成替换方案（按发票维度，同分类优先）
-        function generateReplaceOptions(result) {
-            if (result.noPurchase.length === 0 || result.surplusPurchase.length === 0) return;
-            
-            // 按发票分组无进项产品
-            const invoiceGroups = {};
-            for (const item of result.noPurchase) {
-                for (const inv of item.invoices) {
-                    const invKey = `${inv.buyerName}|${inv.invoiceNo}`;
-                    if (!invoiceGroups[invKey]) {
-                        invoiceGroups[invKey] = {
-                            buyerName: inv.buyerName,
-                            invoiceNo: inv.invoiceNo,
-                            invoiceDate: inv.invoiceDate || '',
-                            products: []
-                        };
-                    }
-                    invoiceGroups[invKey].products.push({
-                        pureProductName: item.pureProductName,
-                        originalName: item.originalName,
-                        category: item.category,
-                        specModel: item.specModel,
-                        salesQuantity: item.salesQuantity,
-                        requiredAmount: item.requiredAmount,
-                        invoiceAmount: inv.amount,
-                        invoiceTotalAmount: inv.totalAmount
-                    });
-                }
-            }
-            
-            // 为每张发票生成替换方案
-            for (const [invKey, group] of Object.entries(invoiceGroups)) {
-                const replaceOptions = [];
-                
-                for (const product of group.products) {
-                    const options = [];
-                    
-                    // 同分类优先，然后按富余金额排序
-                    const sameCategory = result.surplusPurchase.filter(s => s.category === product.category);
-                    const otherCategory = result.surplusPurchase.filter(s => s.category !== product.category);
-                    
-                    for (const surplus of [...sameCategory, ...otherCategory]) {
-                        if (surplus.surplusAmount > 0) {
-                            // 计算替换单价（富余进项单价）
-                            const replaceUnitPrice = surplus.purchaseQuantity > 0 
-                                ? roundMoney(surplus.surplusAmount / surplus.purchaseQuantity) 
-                                : 0;
-                            options.push({
-                                pureProductName: surplus.pureProductName,
-                                originalName: surplus.originalName,
-                                category: surplus.category,
-                                specModel: surplus.specModel,
-                                surplusAmount: surplus.surplusAmount,
-                                purchaseQuantity: surplus.purchaseQuantity,
-                                replaceUnitPrice: replaceUnitPrice,
-                                isSameCategory: surplus.category === product.category
-                            });
-                        }
-                    }
-                    
-                    // 同分类优先，然后按富余金额排序
-                    options.sort((a, b) => {
-                        if (a.isSameCategory !== b.isSameCategory) return b.isSameCategory - a.isSameCategory;
-                        return b.surplusAmount - a.surplusAmount;
-                    });
-                    
-                    if (options.length > 0) {
-                        replaceOptions.push({
-                            neededProduct: product.pureProductName,
-                            category: product.category,
-                            specModel: product.specModel,
-                            requiredAmount: product.requiredAmount,
-                            options: options.slice(0, 3)
-                        });
-                    }
-                }
-                
-                if (replaceOptions.length > 0) {
-                    result.replaceOptions.push({
-                        buyerName: group.buyerName,
-                        invoiceNo: group.invoiceNo,
-                        invoiceDate: group.invoiceDate,
-                        options: replaceOptions
-                    });
-                }
-            }
-        }
+
         
         // 生成产品键
         function makeKey(productName, specModel) {
@@ -1645,7 +1514,6 @@
                 { id: 'noPurchaseSummary', name: '无进项发票统计', data: result.noPurchaseSummary, count: result.noPurchaseSummary.length },
                 { id: 'reminder', name: '催票清单', data: result.reminderList, count: result.reminderList.length },
                 { id: 'needPurchase', name: '需补进项票清单', data: result.needPurchaseList, count: result.needPurchaseList.length },
-                { id: 'replace', name: '替换方案', data: result.replaceOptions, count: result.replaceOptions.length }
             ];
             
             const header = document.getElementById('tabsHeader');
@@ -1707,8 +1575,6 @@
                     return toolbar + generateReminderTable(tab.data);
                 case 'needPurchase':
                     return toolbar + generateNeedPurchaseTable(tab.data);
-                case 'replace':
-                    return toolbar + generateReplaceTable(tab.data);
                 default:
                     return toolbar + '<p>未知Tab</p>';
             }
@@ -1860,32 +1726,7 @@
             return generateTableHTML(headers, rows, 'needPurchase');
         }
         
-        // 生成替换方案表（按发票维度）
-        function generateReplaceTable(data) {
-            if (!data || data.length === 0) {
-                return `<div class="empty-state"><div class="icon">📭</div><p>无替换方案</p></div>`;
-            }
-            
-            return data.map(invoice => `
-                <div class="replace-card">
-                    <h4>📄 ${invoice.buyerName} | ${invoice.invoiceNo}</h4>
-                    ${invoice.options.map(opt => `
-                        <div class="replace-option">
-                            <h5>❌ 缺少：${opt.neededProduct} ${opt.specModel || ''} <small style="font-weight:normal;color:#718096;">(分类: ${opt.category || '未知'})</small></h5>
-                            <p>需补金额：¥${formatMoney(opt.requiredAmount)}</p>
-                            ${opt.options.map(replace => `
-                                <p style="margin-left:15px;padding:5px 0;">
-                                    ✅ 可用：${replace.productName} ${replace.specModel || ''} | 
-                                    富余：¥${formatMoney(replace.surplusAmount)} | 
-                                    ${replace.isSameCategory ? '🏷️ 同分类' : '📝 跨分类'}
-                                </p>
-                            `).join('')}
-                        </div>
-                    `).join('')}
-                </div>
-            `).join('');
-        }
-        
+
         // 生成表格HTML
         function generateTableHTML(headers, rows, tableId, rowClass = '', allowHTML = false) {
             if (rows.length === 0) {
@@ -2016,35 +1857,6 @@
                     ]
                 }];
                 await exportToExcel(sheets, '进项核查_汇总.xlsx');
-            } else if (tabId === 'replace') {
-                const wsData = [[
-                    '发票号码', '购买方名称', '原产品名称', '原规格型号', '原金额', 
-                    '替换产品名称', '替换规格型号', '替换数量', '替换金额', '是否同分类'
-                ]];
-                analysisResult.replaceOptions.forEach(invoice => {
-                    invoice.options.forEach(opt => {
-                        opt.options.forEach(replace => {
-                            const qty = replace.surplusAmount > 0 && replace.purchaseQuantity > 0 
-                                ? roundMoney(replace.surplusAmount / replace.purchaseQuantity) 
-                                : 0;
-                            const replaceAmt = qty * opt.requiredAmount;
-                            wsData.push([
-                                invoice.invoiceNo, invoice.buyerName,
-                                opt.neededProduct, opt.specModel || '', roundMoney(opt.requiredAmount),
-                                replace.pureProductName || replace.productName, replace.specModel || '',
-                                qty, replaceAmt,
-                                replace.isSameCategory ? '✅ 同分类' : '📝 跨分类'
-                            ]);
-                        });
-                    });
-                });
-                const sheets = [{ 
-                    name: '替换方案', 
-                    type: 'titled', 
-                    title: '开超无进项发票 — 产品替换方案',
-                    data: wsData 
-                }];
-                await exportToExcel(sheets, '进项核查_替换方案.xlsx');
             }
         }
         
@@ -2168,32 +1980,6 @@
                     ...analysisResult.needPurchaseList.map((r, i) => [
                         r.productName, r.specModel || '', r.unitPrice, r.quantity || 0, r.costAmount
                     ])
-                ]},
-                
-                // 11. 替换方案 - 12列
-                { name: '替换方案', type: 'titled_replace', title: '开超无进项发票 — 产品替换方案', data: [
-                    ['发票号码', '购买方名称', '开票日期', '原产品名称', '原规格型号', '原金额', '替换产品名称', '替换规格型号', '替换单价', '替换数量', '替换金额', '是否同分类'],
-                    ...(analysisResult.replaceOptions.length > 0 
-                        ? analysisResult.replaceOptions.flatMap(invoice => 
-                            invoice.options.flatMap(opt => 
-                                opt.options.map(replace => {
-                                    const qty = replace.surplusAmount > 0 && replace.purchaseQuantity > 0 
-                                        ? roundMoney(replace.surplusAmount / replace.purchaseQuantity) 
-                                        : 0;
-                                    const replaceAmt = qty * opt.requiredAmount;
-                                    return [
-                                        invoice.invoiceNo, invoice.buyerName, invoice.invoiceDate || '',
-                                        opt.neededProduct, opt.specModel || '', roundMoney(opt.requiredAmount),
-                                        replace.pureProductName || replace.productName, replace.specModel || '',
-                                        replace.replaceUnitPrice || 0,
-                                        qty, replaceAmt,
-                                        replace.isSameCategory ? '是' : '否'
-                                    ];
-                                })
-                            )
-                        )
-                        : [['', '', '', '', '', 0, '', '', 0, 0, 0, '']]
-                    )
                 ]}
             ];
             
@@ -2369,56 +2155,7 @@
                             currentRow++;
                         }
                     }
-                } else if (sheetType === 'titled_replace') {
-                    // 替换方案：是否同分类列着色
-                    const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '', '', '', '', '', '']);
-                    titleRow.getCell(1).font = { bold: true, size: 13 };
-                    ws.mergeCells(1, 1, 1, 12);
-                    titleRow.getCell(1).alignment = { horizontal: 'left' };
-                    currentRow++;
-                    
-                    // 空行
-                    ws.addRow([]);
-                    currentRow++;
-                    
-                    // 表头行
-                    if (sheet.data.length > 0) {
-                        const headerRow = ws.addRow(sheet.data[0]);
-                        headerRow.eachCell(cell => {
-                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
-                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
-                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
-                            cell.border = thinBorder;
-                        });
-                        currentRow++;
-                        
-                        // 数据行（是否同分类列着色）
-                        for (let i = 1; i < sheet.data.length; i++) {
-                            const rowData = sheet.data[i];
-                            const row = ws.addRow(rowData);
-                            const isSameCategory = String(rowData[11] || '');
-                            
-                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-                                cell.border = thinBorder;
-                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-                                // 数字列设格式
-                                if (typeof cell.value === 'number') {
-                                    cell.numFmt = '#,##0.00';
-                                }
-                                // 是否同分类列（L列=第12列）着色
-                                if (colNumber === 12) {
-                                    if (isSameCategory === '是') {
-                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.greenBg } };
-                                        cell.font = { color: { argb: colors.greenText } };
-                                    } else {
-                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
-                                    }
-                                }
-                            });
-                            currentRow++;
-                        }
-                    }
-                } else if (sheetType === 'titled' || sheetType === 'titled_formula') {
+ else if (sheetType === 'titled' || sheetType === 'titled_formula') {
                     // 标题行：合并单元格
                     const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '', '', '', '', '']);
                     titleRow.getCell(1).font = { bold: true, size: 13 };
