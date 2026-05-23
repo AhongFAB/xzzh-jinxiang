@@ -2155,7 +2155,7 @@
                             currentRow++;
                         }
                     }
- else if (sheetType === 'titled' || sheetType === 'titled_formula') {
+                } else if (sheetType === 'titled' || sheetType === 'titled_formula') {
                     // 标题行：合并单元格
                     const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '', '', '', '', '']);
                     titleRow.getCell(1).font = { bold: true, size: 13 };
