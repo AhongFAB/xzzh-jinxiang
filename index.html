@@ -11,6 +11,8 @@
     <link rel="apple-touch-icon" href="icon-192.png">
     <title>进项发票核查工具</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1454,7 +1456,12 @@
                         };
                     }
                     invoiceGroups[invKey].products.push({
-                        ...item,
+                        pureProductName: item.pureProductName,
+                        originalName: item.originalName,
+                        category: item.category,
+                        specModel: item.specModel,
+                        salesQuantity: item.salesQuantity,
+                        requiredAmount: item.requiredAmount,
                         invoiceAmount: inv.amount,
                         invoiceTotalAmount: inv.totalAmount
                     });
@@ -1475,7 +1482,12 @@
                     for (const surplus of [...sameCategory, ...otherCategory]) {
                         if (surplus.surplusAmount > 0) {
                             options.push({
-                                ...surplus,
+                                pureProductName: surplus.pureProductName,
+                                originalName: surplus.originalName,
+                                category: surplus.category,
+                                specModel: surplus.specModel,
+                                surplusAmount: surplus.surplusAmount,
+                                purchaseQuantity: surplus.purchaseQuantity,
                                 isSameCategory: surplus.category === product.category
                             });
                         }
@@ -1489,7 +1501,7 @@
                     
                     if (options.length > 0) {
                         replaceOptions.push({
-                            neededProduct: product.productName,
+                            neededProduct: product.pureProductName,
                             category: product.category,
                             specModel: product.specModel,
                             requiredAmount: product.requiredAmount,
@@ -1636,7 +1648,7 @@
                         🔍 <input type="text" placeholder="搜索..." oninput="filterTable('${tab.id}', this.value)">
                     </div>
                     <div class="export-btns">
-                        <button class="btn btn-secondary" onclick="exportTable('${tab.id}')">📥 导出此页</button>
+                        <button class="btn btn-secondary" onclick="(async () => await exportTable('${tab.id}'))()">📥 导出此页</button>
                     </div>
                 </div>
             `;
@@ -1939,13 +1951,13 @@
         }
         
         // 导出单个表格
-        function exportTable(tabId) {
+        async function exportTable(tabId) {
             const tab = document.querySelector(`[data-tab="${tabId}"]`);
             const tabName = tab ? tab.textContent.trim().split('\n')[0].trim() : tabId;
             
             const table = document.getElementById(`table-${tabId}`);
             if (!table) {
-                exportSpecialTab(tabId, tabName);
+                await exportSpecialTab(tabId, tabName);
                 return;
             }
             
@@ -1957,41 +1969,55 @@
                 }
             });
             
-            exportToExcel([{ name: tabName, data: [headers, ...rows] }], `进项核查_${tabName}.xlsx`);
+            await exportToExcel([{ name: tabName, type: 'data', data: [headers, ...rows] }], `进项核查_${tabName}.xlsx`);
         }
         
         // 导出特殊Tab
-        function exportSpecialTab(tabId, tabName) {
+        async function exportSpecialTab(tabId, tabName) {
             if (tabId === 'summary') {
                 const r = analysisResult.summary;
-                const data = [
-                    ['项目', '数量/金额'],
-                    ['有效销项行数', r.validSalesRows],
-                    ['有效销项总金额', r.validSalesAmount],
-                    ['进项充足产品数', r.normalCount],
-                    ['进项充足金额', r.normalAmount],
-                    ['进项不够产品数', r.insufficientCount],
-                    ['进项不够金额', r.insufficientAmount],
-                    ['无进项产品数', r.noPurchaseCount],
-                    ['无进项金额', r.noPurchaseAmount],
-                    ['费用票数量', analysisResult.expenseTickets.length]
-                ];
-                exportToExcel([{ name: '核查汇总', data }], '进项核查_汇总.xlsx');
+                const sheets = [{ 
+                    name: '核查汇总', 
+                    type: 'summary', 
+                    data: [
+                        ['销项 vs 进项 核查汇总'],
+                        [],
+                        ['❌ 开超（无进项）', `${r.noPurchaseCount} 个产品`, `销项: ${formatMoney(r.noPurchaseAmount)}`, '进项: 0.00', `需补: ${formatMoney(sumAmounts(analysisResult.noPurchase, 'requiredAmount'))}`, ''],
+                        ['⚠️ 开超（进项不够）', `${r.insufficientCount} 个产品`, `销项: ${formatMoney(r.insufficientAmount)}`, '', `需补: ${formatMoney(sumAmounts(analysisResult.insufficient, 'shortage'))}`, ''],
+                        ['✅ 正常（进项够）', `${r.normalCount} 个产品`, `销项: ${formatMoney(r.normalAmount)}`, '', '', ''],
+                        ['📥 有进项未开销项', `${analysisResult.surplusPurchase.length} 个产品`, '销项: 0.00', '', '', '']
+                    ]
+                }];
+                await exportToExcel(sheets, '进项核查_汇总.xlsx');
             } else if (tabId === 'replace') {
-                const wsData = [['购买方', '发票号', '缺少产品', '分类', '规格型号', '需补金额', '可用替换产品', '富余金额', '匹配方式']];
+                const wsData = [[
+                    '发票号码', '购买方名称', '原产品名称', '原规格型号', '原金额', 
+                    '替换产品名称', '替换规格型号', '替换数量', '替换金额', '是否同分类'
+                ]];
                 analysisResult.replaceOptions.forEach(invoice => {
                     invoice.options.forEach(opt => {
                         opt.options.forEach(replace => {
+                            const qty = replace.surplusAmount > 0 && replace.purchaseQuantity > 0 
+                                ? roundMoney(replace.surplusAmount / replace.purchaseQuantity) 
+                                : 0;
+                            const replaceAmt = qty * opt.requiredAmount;
                             wsData.push([
-                                invoice.buyerName, invoice.invoiceNo,
-                                opt.neededProduct, opt.category || '', opt.specModel || '', opt.requiredAmount,
-                                `${replace.productName} ${replace.specModel || ''}`, replace.surplusAmount,
-                                replace.isSameCategory ? '同分类' : '跨分类'
+                                invoice.invoiceNo, invoice.buyerName,
+                                opt.neededProduct, opt.specModel || '', roundMoney(opt.requiredAmount),
+                                replace.pureProductName || replace.productName, replace.specModel || '',
+                                qty, replaceAmt,
+                                replace.isSameCategory ? '✅ 同分类' : '📝 跨分类'
                             ]);
                         });
                     });
                 });
-                exportToExcel([{ name: '替换方案', data: wsData }], '进项核查_替换方案.xlsx');
+                const sheets = [{ 
+                    name: '替换方案', 
+                    type: 'titled', 
+                    title: '开超无进项发票 — 产品替换方案',
+                    data: wsData 
+                }];
+                await exportToExcel(sheets, '进项核查_替换方案.xlsx');
             }
         }
         
@@ -1999,66 +2025,139 @@
         function exportAll() {
             if (!analysisResult) return;
             
+            const r = analysisResult.summary;
+            
             const sheets = [
-                { name: '核查汇总', data: [
-                    ['项目', '数量/金额'],
-                    ['有效销项行数', analysisResult.summary.validSalesRows],
-                    ['有效销项总金额', analysisResult.summary.validSalesAmount],
-                    ['进项充足产品数', analysisResult.summary.normalCount],
-                    ['进项充足金额', analysisResult.summary.normalAmount],
-                    ['进项不够产品数', analysisResult.summary.insufficientCount],
-                    ['进项不够金额', analysisResult.summary.insufficientAmount],
-                    ['无进项产品数', analysisResult.summary.noPurchaseCount],
-                    ['无进项金额', analysisResult.summary.noPurchaseAmount],
-                    ['费用票数量', analysisResult.expenseTickets.length]
+                // 1. 核查汇总 - 横向带颜色格式
+                { name: '核查汇总', type: 'summary', data: [
+                    ['销项 vs 进项 核查汇总（排除红冲后）'],
+                    [],
+                    ['❌ 开超（无进项）', `${r.noPurchaseCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.noPurchaseAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', `需补: ${formatMoney(sumAmounts(analysisResult.noPurchase, 'requiredAmount'))}`, ''],
+                    ['⚠️ 开超（进项不够）', `${r.insufficientCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.insufficientAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', `需补: ${formatMoney(sumAmounts(analysisResult.insufficient, 'shortage'))}`, ''],
+                    ['✅ 正常（进项够）', `${r.normalCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.normalAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', '', ''],
+                    ['📥 有进项未开销项', `${analysisResult.surplusPurchase.length} 个产品`, '', '', '', '']
                 ]},
-                { name: '红冲发票清单', data: [
-                    ['发票号码', '购买方名称', '货物名称', '规格型号', '金额', '税额', '发票状态'],
-                    ...analysisResult.redFlushed.map(r => [r.invoiceNo, r.buyerName, r.productName, r.specModel, r.amount, r.taxAmount, '已红冲'])
+                
+                // 2. 红冲发票清单 - 加标题行，按发票号+购买方汇总
+                { name: '红冲发票清单', type: 'titled', title: '已红冲发票清单（已排除，不参与核查）', data: [
+                    ['发票号码', '购买方名称', '不含税金额', '税额', '含税金额'],
+                    ...(analysisResult.redFlushed.length > 0 
+                        ? (() => {
+                            const grouped = {};
+                            analysisResult.redFlushed.forEach(r => {
+                                const key = `${r.invoiceNo}|${r.buyerName}`;
+                                if (!grouped[key]) {
+                                    grouped[key] = { invoiceNo: r.invoiceNo, buyerName: r.buyerName, amount: 0, taxAmount: 0, count: 0 };
+                                }
+                                grouped[key].amount += r.amount;
+                                grouped[key].taxAmount += r.taxAmount;
+                                grouped[key].count++;
+                            });
+                            return Object.values(grouped).map(g => [
+                                g.invoiceNo, g.buyerName, 
+                                roundMoney(g.amount), roundMoney(g.taxAmount), roundMoney(g.amount + g.taxAmount)
+                            ]);
+                        })()
+                        : [['', '', 0, 0, 0]]
+                    )
                 ]},
-                { name: '费用票清单', data: [
-                    ['发票号码', '销方名称', '货物名称', '规格型号', '金额', '税额'],
-                    ...analysisResult.expenseTickets.map(r => [r.invoiceNo, r.sellerName, r.productName, r.specModel, r.amount, r.taxAmount])
+                
+                // 3. 费用票清单 - 加标题行
+                { name: '费用票清单', type: 'titled', title: '费用票清单（已排除，不参与核查）', data: [
+                    ['发票号码', '销方名称', '货物名称', '规格型号', '不含税金额', '税额'],
+                    ...analysisResult.expenseTickets.map(r => [
+                        r.invoiceNo, r.sellerName, r.productName, r.specModel || '', 
+                        roundMoney(r.amount), roundMoney(r.taxAmount)
+                    ])
                 ]},
-                { name: '正常-进项够', data: [
-                    ['产品名称', '分类', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项底线', '差额'],
-                    ...analysisResult.normalWithEnough.map(r => [r.productName, r.category || '', r.specModel || '', r.salesQuantity || '', r.salesAmount, r.purchaseQuantity || '', r.purchaseAmount, r.requiredAmount, r.difference])
+                
+                // 4. 正常-进项够 - 去掉分类列，加核查结果列
+                { name: '正常-进项够', type: 'data', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '核查结果'],
+                    ...analysisResult.normalWithEnough.map(r => [
+                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, r.difference, '✅ 正常'
+                    ])
                 ]},
-                { name: '开超-进项不够', data: [
-                    ['产品名称', '分类', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项底线', '差额', '需补金额', '涉及供应商'],
-                    ...analysisResult.insufficient.map(r => [r.productName, r.category || '', r.specModel || '', r.salesQuantity || '', r.salesAmount, r.purchaseQuantity || '', r.purchaseAmount, r.requiredAmount, r.shortage, r.shortage, (r.sellers || []).join(', ')])
+                
+                // 5. 开超-进项不够 - 去掉分类列，加核查结果列
+                { name: '开超-进项不够', type: 'data', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '需补进项金额', '核查结果'],
+                    ...analysisResult.insufficient.map(r => [
+                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount,
+                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, -r.shortage, r.shortage, '⚠️ 进项不够'
+                    ])
                 ]},
-                { name: '开超-无进项', data: [
-                    ['产品名称', '分类', '规格型号', '销项数量', '销项金额', '需补进项底线'],
-                    ...analysisResult.noPurchase.map(r => [r.productName, r.category || '', r.specModel || '', r.salesQuantity || '', r.salesAmount, r.requiredAmount])
+                
+                // 6. 开超-无进项 - 去掉分类列，加核查结果列
+                { name: '开超-无进项', type: 'data', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '核查结果', '需补进项底线'],
+                    ...analysisResult.noPurchase.map(r => [
+                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        '❌ 开超（无进项）', r.requiredAmount
+                    ])
                 ]},
-                { name: '有进项未开销项', data: [
-                    ['产品名称', '分类', '规格型号', '进项数量', '进项金额', '富余金额'],
-                    ...analysisResult.surplusPurchase.map(r => [r.productName, r.category || '', r.specModel || '', r.purchaseQuantity || '', r.purchaseAmount, r.surplusAmount])
+                
+                // 7. 有进项未开销项 - 去掉分类列，加核查结果列
+                { name: '有进项未开销项', type: 'data', data: [
+                    ['产品名', '规格型号', '进项数量', '进项金额', '核查结果'],
+                    ...analysisResult.surplusPurchase.map(r => [
+                        r.pureProductName, r.specModel || '', r.purchaseQuantity || 0, r.purchaseAmount, '📥 有进项未开销项'
+                    ])
                 ]},
-                { name: '无进项发票统计', data: [
-                    ['购买方名称', '发票号码', '不含税金额', '含税金额（实际）'],
-                    ...analysisResult.noPurchaseSummary.map(r => [r.buyerName, r.invoiceNo, r.amountWithoutTax, r.amountWithTax])
+                
+                // 8. 无进项发票统计 - 加标题行，改列名
+                { name: '无进项发票统计', type: 'titled', title: '无进项发票统计 — 按购买方+发票号', data: [
+                    ['购买方名称', '发票号码', '不含税金额', '税额', '含税金额'],
+                    ...analysisResult.noPurchaseSummary.map(r => [
+                        r.buyerName, r.invoiceNo, r.amountWithoutTax, roundMoney(r.amountWithTax - r.amountWithoutTax), r.amountWithTax
+                    ])
                 ]},
-                { name: '催票清单', data: [
-                    ['供应商', '分类', '需催票金额', '紧急程度'],
-                    ...analysisResult.reminderList.map(r => [r.seller, r.category || '', r.amount, r.urgentLevel === 'high' ? '紧急' : r.urgentLevel === 'medium' ? '一般' : '较低'])
+                
+                // 9. 催票清单 - 改名，加标题行，改列名
+                { name: '催票-按供应商汇总', type: 'titled', title: '催票清单 — 按供应商汇总', data: [
+                    ['供应商', '涉及产品数', '总销项金额', '总已有进项金额', '总需补进项金额', '紧急程度'],
+                    ...analysisResult.reminderList.map(r => {
+                        const emoji = r.urgentLevel === 'high' ? '🔴' : r.urgentLevel === 'medium' ? '🟡' : '🟢';
+                        const urgentText = r.urgentLevel === 'high' ? '紧急' : r.urgentLevel === 'medium' ? '一般' : '低';
+                        // 计算涉及产品数
+                        const productCount = analysisResult.insufficient.filter(i => 
+                            i.sellers && i.sellers.includes(r.seller)
+                        ).length;
+                        return [r.seller, productCount || '', '', '', roundMoney(r.amount), `${emoji} ${urgentText}`];
+                    })
                 ]},
-                { name: '需补进项票清单', data: [
-                    ['产品名称', '分类', '规格型号', '数量', '成本单价', '成本金额'],
-                    ...analysisResult.needPurchaseList.map(r => [r.productName, r.category || '', r.specModel || '', r.quantity || '', r.unitPrice, r.costAmount])
+                
+                // 10. 需补进项票清单 - 加标题行和公式说明，加序号
+                { name: '需补进项票清单', type: 'titled_formula', title: '开超无进项产品 — 需补进项票清单', formula: '成本金额 = 销售金额 ÷ 1.185', data: [
+                    ['序号', '产品名称', '规格型号', '成本单价', '数量', '成本金额'],
+                    ...analysisResult.needPurchaseList.map((r, i) => [
+                        i + 1, r.productName, r.specModel || '', r.unitPrice, r.quantity || 0, r.costAmount
+                    ])
                 ]},
-                { name: '替换方案', data: [
-                    ['购买方', '发票号', '缺少产品', '分类', '规格型号', '需补金额', '可用替换产品', '富余金额', '匹配方式'],
-                    ...analysisResult.replaceOptions.flatMap(invoice => 
-                        invoice.options.flatMap(opt => 
-                            opt.options.map(replace => [
-                                invoice.buyerName, invoice.invoiceNo,
-                                opt.neededProduct, opt.category || '', opt.specModel || '', opt.requiredAmount,
-                                `${replace.productName} ${replace.specModel || ''}`, replace.surplusAmount,
-                                replace.isSameCategory ? '同分类' : '跨分类'
-                            ])
+                
+                // 11. 替换方案 - 加标题行，改列名，加是否同分类
+                { name: '替换方案', type: 'titled', title: '开超无进项发票 — 产品替换方案', data: [
+                    ['发票号码', '购买方名称', '原产品名称', '原规格型号', '原金额', '替换产品名称', '替换规格型号', '替换数量', '替换金额', '是否同分类'],
+                    ...(analysisResult.replaceOptions.length > 0 
+                        ? analysisResult.replaceOptions.flatMap(invoice => 
+                            invoice.options.flatMap(opt => 
+                                opt.options.map(replace => {
+                                    const qty = replace.surplusAmount > 0 && replace.purchaseQuantity > 0 
+                                        ? roundMoney(replace.surplusAmount / replace.purchaseQuantity) 
+                                        : 0;
+                                    const replaceAmt = qty * opt.requiredAmount;
+                                    return [
+                                        invoice.invoiceNo, invoice.buyerName,
+                                        opt.neededProduct, opt.specModel || '', roundMoney(opt.requiredAmount),
+                                        replace.pureProductName || replace.productName, replace.specModel || '',
+                                        qty, replaceAmt,
+                                        replace.isSameCategory ? '✅ 同分类' : '📝 跨分类'
+                                    ];
+                                })
+                            )
                         )
+                        : [['', '', '', '', 0, '', '', 0, 0, '']]
                     )
                 ]}
             ];
@@ -2066,16 +2165,205 @@
             exportToExcel(sheets, '进项核查_完整报告.xlsx');
         }
         
-        // 导出Excel
-        function exportToExcel(sheets, filename) {
-            const wb = XLSX.utils.book_new();
+        // 导出Excel（使用ExcelJS支持样式化导出）
+        async function exportToExcel(sheets, filename) {
+            const workbook = new ExcelJS.Workbook();
+            
+            // 颜色定义
+            const colors = {
+                headerBg: 'FF4472C4',    // 蓝底
+                headerFont: 'FFFFFFFF',  // 白字
+                redBg: 'FFFFC7CE',       // 红色背景（开超）
+                yellowBg: 'FFFFEB9C',    // 黄色背景（进项不够）
+                greenBg: 'FFC6EFCE',     // 绿色背景（正常）
+                blueBg: 'FFD6E4F0'       // 浅蓝色背景（有进项未开销项）
+            };
+            
+            // 边框样式
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+                left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+                bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
+                right: { style: 'thin', color: { argb: 'FFD0D0D0' } }
+            };
             
             sheets.forEach(sheet => {
-                const ws = XLSX.utils.aoa_to_sheet(sheet.data);
-                XLSX.utils.book_append_sheet(wb, ws, sheet.name);
+                const ws = workbook.addWorksheet(sheet.name);
+                const sheetType = sheet.type || 'data';
+                
+                let currentRow = 1;
+                
+                if (sheetType === 'summary') {
+                    // 标题行：合并单元格
+                    const titleRow = ws.addRow([sheet.data[0][0], '', '', '', '', '']);
+                    titleRow.getCell(1).font = { bold: true, size: 14 };
+                    ws.mergeCells(1, 1, 1, 6);
+                    titleRow.getCell(1).alignment = { horizontal: 'center' };
+                    currentRow++;
+                    
+                    // 空行
+                    ws.addRow([]);
+                    currentRow++;
+                    
+                    // 数据行（带颜色）
+                    for (let i = 1; i < sheet.data.length; i++) {
+                        const rowData = sheet.data[i];
+                        const row = ws.addRow(rowData);
+                        
+                        // 根据第一列设置颜色
+                        let bgColor = null;
+                        const firstCell = String(rowData[0] || '');
+                        if (firstCell.includes('❌ 开超') || firstCell.includes('无进项')) {
+                            bgColor = colors.redBg;
+                        } else if (firstCell.includes('⚠️ 进项不够')) {
+                            bgColor = colors.yellowBg;
+                        } else if (firstCell.includes('✅ 正常') || firstCell.includes('进项充足')) {
+                            bgColor = colors.greenBg;
+                        } else if (firstCell.includes('📥 有进项未开销项')) {
+                            bgColor = colors.blueBg;
+                        }
+                        
+                        row.eachCell(cell => {
+                            cell.border = thinBorder;
+                            if (bgColor) {
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                            }
+                        });
+                        currentRow++;
+                    }
+                } else if (sheetType === 'titled' || sheetType === 'titled_formula') {
+                    // 标题行：合并单元格
+                    const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '', '', '', '', '']);
+                    titleRow.getCell(1).font = { bold: true, size: 13 };
+                    ws.mergeCells(1, 1, 1, 11);
+                    titleRow.getCell(1).alignment = { horizontal: 'left' };
+                    currentRow++;
+                    
+                    // 公式说明行（仅titled_formula类型）
+                    if (sheetType === 'titled_formula' && sheet.formula) {
+                        const formulaRow = ws.addRow([sheet.formula, '']);
+                        formulaRow.getCell(1).font = { italic: true, color: { argb: 'FF666666' }, size: 10 };
+                        ws.mergeCells(2, 1, 2, 6);
+                        currentRow++;
+                    }
+                    
+                    // 空行
+                    ws.addRow([]);
+                    currentRow++;
+                    
+                    // 表头行
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        currentRow++;
+                        
+                        // 数据行
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            // 检查是否需要着色（基于核查结果列）
+                            let bgColor = null;
+                            const lastCell = String(rowData[rowData.length - 1] || '');
+                            if (lastCell.includes('❌ 开超') || lastCell.includes('无进项')) {
+                                bgColor = colors.redBg;
+                            } else if (lastCell.includes('⚠️ 进项不够')) {
+                                bgColor = colors.yellowBg;
+                            } else if (lastCell.includes('✅ 正常') || lastCell.includes('进项够')) {
+                                bgColor = colors.greenBg;
+                            } else if (lastCell.includes('📥 有进项未开销项') || lastCell.includes('未开销项')) {
+                                bgColor = colors.blueBg;
+                            }
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                // 数字列设格式
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 检查倒数第二列是否是数字（差额、需补金额等）
+                                if (colNumber === rowData.length - 1 && typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                    if (cell.value < 0) {
+                                        cell.font = { color: { argb: 'FFC00000' } };
+                                    }
+                                }
+                                if (bgColor) {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                                }
+                            });
+                            currentRow++;
+                        }
+                    }
+                } else {
+                    // 普通数据格式：表头+数据
+                    if (sheet.data.length > 0) {
+                        // 表头行
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        
+                        // 数据行
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            // 检查是否需要着色
+                            let bgColor = null;
+                            const lastCell = String(rowData[rowData.length - 1] || '');
+                            if (lastCell.includes('❌') || lastCell.includes('无进项') || lastCell.includes('已红冲') || lastCell.includes('红冲')) {
+                                bgColor = colors.redBg;
+                            } else if (lastCell.includes('⚠️') || lastCell.includes('不够')) {
+                                bgColor = colors.yellowBg;
+                            } else if (lastCell.includes('✅') || lastCell.includes('正常')) {
+                                bgColor = colors.greenBg;
+                            } else if (lastCell.includes('📥') || lastCell.includes('未开销项')) {
+                                bgColor = colors.blueBg;
+                            }
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                // 数字列设格式
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                            });
+                            
+                            if (bgColor) {
+                                row.eachCell(cell => {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                                });
+                            }
+                        }
+                    }
+                }
+                
+                // 自动列宽
+                ws.columns.forEach((col, i) => {
+                    let maxLen = 0;
+                    sheet.data.forEach(row => {
+                        const val = row[i];
+                        if (val !== undefined && val !== null) {
+                            const len = String(val).length;
+                            if (len > maxLen) maxLen = len;
+                        }
+                    });
+                    col.width = Math.min(Math.max(maxLen * 1.2 + 2, 10), 40);
+                });
             });
             
-            XLSX.writeFile(wb, filename);
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            saveAs(blob, filename);
         }
         
         // 重置
