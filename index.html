@@ -705,9 +705,39 @@
                 grid-template-columns: repeat(2, 1fr);
             }
         }
-    </style>
+    
+/* 返回前台按钮 */
+.back-to-portal {
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 99999;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(30, 78, 121, 0.9);
+    border: 2px solid rgba(255,255,255,0.3);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+    font-size: 20px;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.back-to-portal:hover {
+    background: rgba(30, 78, 121, 1);
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+</style>
 </head>
 <body>
+<a href="https://ahongfab.github.io/xzzh-portal/" class="back-to-portal" title="返回首页">&#8592;</a>
+
     <header class="header">
         <h1>进项发票核查工具</h1>
         <p>开票前进项智能匹配系统</p>
