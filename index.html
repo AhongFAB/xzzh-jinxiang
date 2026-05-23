@@ -1287,7 +1287,8 @@
                             purchaseAmount: roundMoney(pData.totalAmount),
                             requiredAmount: roundMoney(minRequiredPurchase),
                             difference: roundMoney(difference),
-                            buyers: sData.buyers
+                            buyers: sData.buyers,
+                            sellers: pData.sellers
                         });
                         result.summary.normalCount++;
                         result.summary.normalAmount += sData.totalAmount;
@@ -1338,7 +1339,8 @@
                         salesAmount: roundMoney(sData.totalAmount),
                         totalWithTax: roundMoney(sData.totalWithTax),
                         requiredAmount: roundMoney(minRequiredPurchase),
-                        invoices: sData.invoices
+                        invoices: sData.invoices,
+                        buyers: sData.buyers
                     });
                     result.summary.noPurchaseCount++;
                     result.summary.noPurchaseAmount += sData.totalAmount;
@@ -1356,7 +1358,8 @@
                         specModel: pData.specModel,
                         purchaseQuantity: roundMoney(pData.totalQuantity),
                         purchaseAmount: roundMoney(pData.totalAmount),
-                        surplusAmount: roundMoney(pData.totalAmount) // 全部富余
+                        surplusAmount: roundMoney(pData.totalAmount), // 全部富余
+                        sellers: pData.sellers
                     });
                     result.summary.surplusAmount += pData.totalAmount;
                 }
@@ -2071,38 +2074,41 @@
                     ])
                 ]},
                 
-                // 4. 正常-进项够 - 去掉分类列，加核查结果列
+                // 4. 正常-进项够 - 加客户、供应商信息
                 { name: '正常-进项够', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '核查结果'],
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '购买方', '供应商', '核查结果'],
                     ...analysisResult.normalWithEnough.map(r => [
-                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
-                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, r.difference, '✅ 正常'
+                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, r.difference,
+                        (r.buyers || []).join('、'), (r.sellers || []).join('、'), '✅ 正常（进项够）'
                     ])
                 ]},
                 
-                // 5. 开超-进项不够 - 去掉分类列，加核查结果列
+                // 5. 开超-进项不够 - 加供应商信息
                 { name: '开超-进项不够', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '需补进项金额', '核查结果'],
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '需补进项金额', '供应商', '核查结果'],
                     ...analysisResult.insufficient.map(r => [
-                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount,
-                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, -r.shortage, r.shortage, '⚠️ 进项不够'
+                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount,
+                        r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, -r.shortage, r.shortage,
+                        (r.sellers || []).join('、'), '⚠️ 开超（进项不够）'
                     ])
                 ]},
                 
-                // 6. 开超-无进项 - 去掉分类列，加核查结果列
+                // 6. 开超-无进项 - 加购买方信息
                 { name: '开超-无进项', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '核查结果', '需补进项底线'],
+                    ['产品名', '规格型号', '销项数量', '销项金额', '购买方', '核查结果', '需补进项底线'],
                     ...analysisResult.noPurchase.map(r => [
-                        r.pureProductName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
-                        '❌ 开超（无进项）', r.requiredAmount
+                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        (r.buyers || []).join('、'), '❌ 开超（无进项）', r.requiredAmount
                     ])
                 ]},
                 
-                // 7. 有进项未开销项 - 去掉分类列，加核查结果列
+                // 7. 有进项未开销项 - 加供应商信息
                 { name: '有进项未开销项', type: 'data', data: [
-                    ['产品名', '规格型号', '进项数量', '进项金额', '核查结果'],
+                    ['产品名', '规格型号', '进项数量', '进项金额', '供应商', '核查结果'],
                     ...analysisResult.surplusPurchase.map(r => [
-                        r.pureProductName, r.specModel || '', r.purchaseQuantity || 0, r.purchaseAmount, '📥 有进项未开销项'
+                        r.productName, r.specModel || '', r.purchaseQuantity || 0, r.purchaseAmount,
+                        (r.sellers || []).join('、'), '📥 有进项未开销项'
                     ])
                 ]},
                 
