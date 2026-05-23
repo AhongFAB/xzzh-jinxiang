@@ -1080,6 +1080,7 @@
                 
                 const invoiceNo = getCellValue(row, idx.invoiceNo);
                 const buyerName = getCellValue(row, idx.buyerName);
+                const invoiceDate = getCellValue(row, idx.invoiceDate);
                 const specModel = getCellValue(row, idx.specModel) || '';
                 const quantity = parseFloat(getCellValue(row, idx.quantity)) || 0;
                 const amount = parseAmount(getCellValue(row, idx.amount));
@@ -1096,6 +1097,7 @@
                 rows.push({
                     invoiceNo,
                     buyerName,
+                    invoiceDate,
                     productName: rawProductName,
                     pureProductName,
                     category,
@@ -1122,6 +1124,7 @@
                 
                 const invoiceNo = getCellValue(row, idx.invoiceNo);
                 const sellerName = getCellValue(row, idx.sellerName);
+                const invoiceDate = getCellValue(row, idx.invoiceDate);
                 const specModel = getCellValue(row, idx.specModel) || '';
                 const quantity = parseFloat(getCellValue(row, idx.quantity)) || 0;
                 const amount = parseAmount(getCellValue(row, idx.amount));
@@ -1134,6 +1137,7 @@
                 rows.push({
                     invoiceNo,
                     sellerName,
+                    invoiceDate,
                     productName: rawProductName,
                     pureProductName,
                     category,
@@ -1227,6 +1231,7 @@
                 salesByProduct[key].invoices.push({
                     invoiceNo: row.invoiceNo,
                     buyerName: row.buyerName,
+                    invoiceDate: row.invoiceDate,
                     amount: row.amount,
                     totalAmount: row.totalAmount
                 });
@@ -1256,6 +1261,7 @@
                 purchaseByProduct[key].invoices.push({
                     invoiceNo: row.invoiceNo,
                     sellerName: row.sellerName,
+                    invoiceDate: row.invoiceDate,
                     amount: row.amount
                 });
             }
@@ -1319,10 +1325,14 @@
                             const existing = result.reminderList.find(r => r.seller === seller);
                             if (existing) {
                                 existing.amount += amount;
+                                existing.totalSalesAmount += sData.totalAmount;
+                                existing.totalPurchaseAmount += pData.totalAmount;
                             } else {
                                 result.reminderList.push({
                                     seller,
                                     amount,
+                                    totalSalesAmount: sData.totalAmount,
+                                    totalPurchaseAmount: pData.totalAmount,
                                     category: pData.category
                                 });
                             }
@@ -1398,12 +1408,19 @@
                         noPurchaseSummaryMap[key] = {
                             buyerName: inv.buyerName || '未知',
                             invoiceNo: inv.invoiceNo,
+                            invoiceDate: inv.invoiceDate || '',
+                            count: 0,
                             amountWithoutTax: 0,
+                            taxAmount: 0,
                             amountWithTax: 0
                         };
                     }
+                    noPurchaseSummaryMap[key].count++;
                     noPurchaseSummaryMap[key].amountWithoutTax += roundMoney(inv.amount);
                     noPurchaseSummaryMap[key].amountWithTax += roundMoney(inv.totalAmount);
+                    // 计算税额
+                    const tax = roundMoney(inv.totalAmount - inv.amount);
+                    noPurchaseSummaryMap[key].taxAmount += tax;
                 }
             }
             result.noPurchaseSummary = Object.values(noPurchaseSummaryMap);
@@ -1455,6 +1472,7 @@
                         invoiceGroups[invKey] = {
                             buyerName: inv.buyerName,
                             invoiceNo: inv.invoiceNo,
+                            invoiceDate: inv.invoiceDate || '',
                             products: []
                         };
                     }
@@ -1484,6 +1502,10 @@
                     
                     for (const surplus of [...sameCategory, ...otherCategory]) {
                         if (surplus.surplusAmount > 0) {
+                            // 计算替换单价（富余进项单价）
+                            const replaceUnitPrice = surplus.purchaseQuantity > 0 
+                                ? roundMoney(surplus.surplusAmount / surplus.purchaseQuantity) 
+                                : 0;
                             options.push({
                                 pureProductName: surplus.pureProductName,
                                 originalName: surplus.originalName,
@@ -1491,6 +1513,7 @@
                                 specModel: surplus.specModel,
                                 surplusAmount: surplus.surplusAmount,
                                 purchaseQuantity: surplus.purchaseQuantity,
+                                replaceUnitPrice: replaceUnitPrice,
                                 isSameCategory: surplus.category === product.category
                             });
                         }
@@ -1517,6 +1540,7 @@
                     result.replaceOptions.push({
                         buyerName: group.buyerName,
                         invoiceNo: group.invoiceNo,
+                        invoiceDate: group.invoiceDate,
                         options: replaceOptions
                     });
                 }
@@ -2030,121 +2054,125 @@
             
             const r = analysisResult.summary;
             
+            // 计算各分类的进项金额
+            const normalPurchaseAmount = analysisResult.normalWithEnough.reduce((sum, item) => sum + item.purchaseAmount, 0);
+            const insufficientPurchaseAmount = analysisResult.insufficient.reduce((sum, item) => sum + item.purchaseAmount, 0);
+            
             const sheets = [
                 // 1. 核查汇总 - 横向带颜色格式
                 { name: '核查汇总', type: 'summary', data: [
                     ['销项 vs 进项 核查汇总（排除红冲后）'],
                     [],
-                    ['❌ 开超（无进项）', `${r.noPurchaseCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.noPurchaseAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', `需补: ${formatMoney(sumAmounts(analysisResult.noPurchase, 'requiredAmount'))}`, ''],
-                    ['⚠️ 开超（进项不够）', `${r.insufficientCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.insufficientAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', `需补: ${formatMoney(sumAmounts(analysisResult.insufficient, 'shortage'))}`, ''],
-                    ['✅ 正常（进项够）', `${r.normalCount} 个产品`, `销项: ${r.validSalesAmount > 0 ? (r.normalAmount/r.validSalesAmount*100).toFixed(1) : 0}%`, '', '', ''],
+                    ['❌ 开超（无进项）', `${r.noPurchaseCount} 个产品`, `销项: ${formatMoney(sumAmounts(analysisResult.noPurchase, 'salesAmount'))}`, `进项: 0.00`, `需补: ${formatMoney(sumAmounts(analysisResult.noPurchase, 'requiredAmount'))}`, ''],
+                    ['⚠️ 开超（进项不够）', `${r.insufficientCount} 个产品`, `销项: ${formatMoney(sumAmounts(analysisResult.insufficient, 'salesAmount'))}`, `进项: ${formatMoney(insufficientPurchaseAmount)}`, `需补: ${formatMoney(sumAmounts(analysisResult.insufficient, 'shortage'))}`, ''],
+                    ['✅ 正常（进项够）', `${r.normalCount} 个产品`, `销项: ${formatMoney(sumAmounts(analysisResult.normalWithEnough, 'salesAmount'))}`, `进项: ${formatMoney(normalPurchaseAmount)}`, '', ''],
                     ['📥 有进项未开销项', `${analysisResult.surplusPurchase.length} 个产品`, '', '', '', '']
                 ]},
                 
-                // 2. 红冲发票清单 - 加标题行，按发票号+购买方汇总
-                { name: '红冲发票清单', type: 'titled', title: '已红冲发票清单（已排除，不参与核查）', data: [
-                    ['发票号码', '购买方名称', '不含税金额', '税额', '含税金额'],
+                // 2. 红冲发票清单 - 7列：发票号码、购买方名称、开票日期、行数、不含税金额、税额、含税金额
+                { name: '红冲发票清单', type: 'titled_red', title: '已红冲发票清单（已排除，不参与核查）', data: [
+                    ['发票号码', '购买方名称', '开票日期', '行数', '不含税金额', '税额', '含税金额'],
                     ...(analysisResult.redFlushed.length > 0 
                         ? (() => {
                             const grouped = {};
                             analysisResult.redFlushed.forEach(r => {
                                 const key = `${r.invoiceNo}|${r.buyerName}`;
                                 if (!grouped[key]) {
-                                    grouped[key] = { invoiceNo: r.invoiceNo, buyerName: r.buyerName, amount: 0, taxAmount: 0, count: 0 };
+                                    grouped[key] = { invoiceNo: r.invoiceNo, buyerName: r.buyerName, invoiceDate: r.invoiceDate || '', amount: 0, taxAmount: 0, count: 0 };
                                 }
                                 grouped[key].amount += r.amount;
                                 grouped[key].taxAmount += r.taxAmount;
                                 grouped[key].count++;
                             });
                             return Object.values(grouped).map(g => [
-                                g.invoiceNo, g.buyerName, 
+                                g.invoiceNo, g.buyerName, g.invoiceDate, g.count,
                                 roundMoney(g.amount), roundMoney(g.taxAmount), roundMoney(g.amount + g.taxAmount)
                             ]);
                         })()
-                        : [['', '', 0, 0, 0]]
+                        : [['', '', '', 0, 0, 0, 0]]
                     )
                 ]},
                 
-                // 3. 费用票清单 - 加标题行
+                // 3. 费用票清单 - 7列，增加含税金额
                 { name: '费用票清单', type: 'titled', title: '费用票清单（已排除，不参与核查）', data: [
-                    ['发票号码', '销方名称', '货物名称', '规格型号', '不含税金额', '税额'],
+                    ['发票号码', '销方名称', '货物名称', '规格型号', '不含税金额', '税额', '含税金额'],
                     ...analysisResult.expenseTickets.map(r => [
                         r.invoiceNo, r.sellerName, r.productName, r.specModel || '', 
-                        roundMoney(r.amount), roundMoney(r.taxAmount)
+                        roundMoney(r.amount), roundMoney(r.taxAmount), roundMoney(r.totalAmount || (r.amount + r.taxAmount))
                     ])
                 ]},
                 
-                // 4. 正常-进项够 - 加客户、供应商信息
-                { name: '正常-进项够', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '购买方', '供应商', '核查结果'],
+                // 4. 正常-进项够 - 9列，去掉购买方和供应商
+                { name: '正常-进项够', type: 'data_green', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '核查结果'],
                     ...analysisResult.normalWithEnough.map(r => [
-                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        r.productName || r.originalName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
                         r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, r.difference,
-                        (r.buyers || []).join('、'), (r.sellers || []).join('、'), '✅ 正常（进项够）'
+                        '✅ 正常（进项够）'
                     ])
                 ]},
                 
-                // 5. 开超-进项不够 - 加供应商信息
-                { name: '开超-进项不够', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '需补进项金额', '供应商', '核查结果'],
+                // 5. 开超-进项不够 - 10列，去掉供应商
+                { name: '开超-进项不够', type: 'data_yellow', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '进项数量', '进项金额', '进项金额底线', '差额', '需补进项金额', '核查结果'],
                     ...analysisResult.insufficient.map(r => [
-                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount,
+                        r.productName || r.originalName, r.specModel || '', r.salesQuantity || 0, r.salesAmount,
                         r.purchaseQuantity || 0, r.purchaseAmount, r.requiredAmount, -r.shortage, r.shortage,
-                        (r.sellers || []).join('、'), '⚠️ 开超（进项不够）'
+                        '⚠️ 开超（进项不够）'
                     ])
                 ]},
                 
-                // 6. 开超-无进项 - 加购买方信息
-                { name: '开超-无进项', type: 'data', data: [
-                    ['产品名', '规格型号', '销项数量', '销项金额', '购买方', '核查结果', '需补进项底线'],
+                // 6. 开超-无进项 - 6列，去掉购买方
+                { name: '开超-无进项', type: 'data_red', data: [
+                    ['产品名', '规格型号', '销项数量', '销项金额', '核查结果', '需补进项底线'],
                     ...analysisResult.noPurchase.map(r => [
-                        r.productName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
-                        (r.buyers || []).join('、'), '❌ 开超（无进项）', r.requiredAmount
+                        r.productName || r.originalName, r.specModel || '', r.salesQuantity || 0, r.salesAmount, 
+                        '❌ 开超（无进项）', r.requiredAmount
                     ])
                 ]},
                 
-                // 7. 有进项未开销项 - 加供应商信息
-                { name: '有进项未开销项', type: 'data', data: [
-                    ['产品名', '规格型号', '进项数量', '进项金额', '供应商', '核查结果'],
+                // 7. 有进项未开销项 - 5列，去掉供应商
+                { name: '有进项未开销项', type: 'data_blue', data: [
+                    ['产品名', '规格型号', '进项数量', '进项金额', '核查结果'],
                     ...analysisResult.surplusPurchase.map(r => [
-                        r.productName, r.specModel || '', r.purchaseQuantity || 0, r.purchaseAmount,
-                        (r.sellers || []).join('、'), '📥 有进项未开销项'
+                        r.productName || r.originalName, r.specModel || '', r.purchaseQuantity || 0, r.purchaseAmount,
+                        '📥 有进项未开销项'
                     ])
                 ]},
                 
-                // 8. 无进项发票统计 - 加标题行，改列名
+                // 8. 无进项发票统计 - 7列：购买方名称、发票号码、开票日期、发票行数、不含税金额、税额、含税金额
                 { name: '无进项发票统计', type: 'titled', title: '无进项发票统计 — 按购买方+发票号', data: [
-                    ['购买方名称', '发票号码', '不含税金额', '税额', '含税金额'],
+                    ['购买方名称', '发票号码', '开票日期', '发票行数', '不含税金额', '税额', '含税金额'],
                     ...analysisResult.noPurchaseSummary.map(r => [
-                        r.buyerName, r.invoiceNo, r.amountWithoutTax, roundMoney(r.amountWithTax - r.amountWithoutTax), r.amountWithTax
+                        r.buyerName, r.invoiceNo, r.invoiceDate || '', r.count || 1, 
+                        r.amountWithoutTax, roundMoney(r.taxAmount), r.amountWithTax
                     ])
                 ]},
                 
-                // 9. 催票清单 - 改名，加标题行，改列名
-                { name: '催票-按供应商汇总', type: 'titled', title: '催票清单 — 按供应商汇总', data: [
+                // 9. 催票清单 - 按供应商汇总
+                { name: '催票-按供应商汇总', type: 'titled_urgent', title: '催票清单 — 按供应商汇总', data: [
                     ['供应商', '涉及产品数', '总销项金额', '总已有进项金额', '总需补进项金额', '紧急程度'],
                     ...analysisResult.reminderList.map(r => {
-                        const emoji = r.urgentLevel === 'high' ? '🔴' : r.urgentLevel === 'medium' ? '🟡' : '🟢';
                         const urgentText = r.urgentLevel === 'high' ? '紧急' : r.urgentLevel === 'medium' ? '一般' : '低';
                         // 计算涉及产品数
                         const productCount = analysisResult.insufficient.filter(i => 
                             i.sellers && i.sellers.includes(r.seller)
                         ).length;
-                        return [r.seller, productCount || '', '', '', roundMoney(r.amount), `${emoji} ${urgentText}`];
+                        return [r.seller, productCount || 0, roundMoney(r.totalSalesAmount || 0), roundMoney(r.totalPurchaseAmount || 0), roundMoney(r.amount), urgentText];
                     })
                 ]},
                 
-                // 10. 需补进项票清单 - 加标题行和公式说明，加序号
+                // 10. 需补进项票清单 - 6列
                 { name: '需补进项票清单', type: 'titled_formula', title: '开超无进项产品 — 需补进项票清单', formula: '成本金额 = 销售金额 ÷ 1.185', data: [
-                    ['序号', '产品名称', '规格型号', '成本单价', '数量', '成本金额'],
+                    ['产品名称', '规格型号', '成本单价', '数量', '成本金额'],
                     ...analysisResult.needPurchaseList.map((r, i) => [
-                        i + 1, r.productName, r.specModel || '', r.unitPrice, r.quantity || 0, r.costAmount
+                        r.productName, r.specModel || '', r.unitPrice, r.quantity || 0, r.costAmount
                     ])
                 ]},
                 
-                // 11. 替换方案 - 加标题行，改列名，加是否同分类
-                { name: '替换方案', type: 'titled', title: '开超无进项发票 — 产品替换方案', data: [
-                    ['发票号码', '购买方名称', '原产品名称', '原规格型号', '原金额', '替换产品名称', '替换规格型号', '替换数量', '替换金额', '是否同分类'],
+                // 11. 替换方案 - 12列
+                { name: '替换方案', type: 'titled_replace', title: '开超无进项发票 — 产品替换方案', data: [
+                    ['发票号码', '购买方名称', '开票日期', '原产品名称', '原规格型号', '原金额', '替换产品名称', '替换规格型号', '替换单价', '替换数量', '替换金额', '是否同分类'],
                     ...(analysisResult.replaceOptions.length > 0 
                         ? analysisResult.replaceOptions.flatMap(invoice => 
                             invoice.options.flatMap(opt => 
@@ -2154,16 +2182,17 @@
                                         : 0;
                                     const replaceAmt = qty * opt.requiredAmount;
                                     return [
-                                        invoice.invoiceNo, invoice.buyerName,
+                                        invoice.invoiceNo, invoice.buyerName, invoice.invoiceDate || '',
                                         opt.neededProduct, opt.specModel || '', roundMoney(opt.requiredAmount),
                                         replace.pureProductName || replace.productName, replace.specModel || '',
+                                        replace.replaceUnitPrice || 0,
                                         qty, replaceAmt,
-                                        replace.isSameCategory ? '✅ 同分类' : '📝 跨分类'
+                                        replace.isSameCategory ? '是' : '否'
                                     ];
                                 })
                             )
                         )
-                        : [['', '', '', '', 0, '', '', 0, 0, '']]
+                        : [['', '', '', '', '', 0, '', '', 0, 0, 0, '']]
                     )
                 ]}
             ];
@@ -2179,18 +2208,24 @@
             const colors = {
                 headerBg: 'FF4472C4',    // 蓝底
                 headerFont: 'FFFFFFFF',  // 白字
-                redBg: 'FFFFC7CE',       // 红色背景（开超）
+                redBg: 'FFFFC7CE',        // 红色背景（开超）
+                redText: 'FFC00000',     // 红色文字
                 yellowBg: 'FFFFEB9C',    // 黄色背景（进项不够）
+                yellowText: 'FF9C6500',  // 黄色文字
                 greenBg: 'FFC6EFCE',     // 绿色背景（正常）
-                blueBg: 'FFD6E4F0'       // 浅蓝色背景（有进项未开销项）
+                greenText: 'FF276221',   // 绿色文字
+                blueBg: 'FFD6E4F0',      // 浅蓝色背景（有进项未开销项）
+                blueText: 'FF1F4E79',    // 蓝色文字
+                redHeaderFont: 'FFCC0000', // 红冲标题红色字体
+                border: 'FFD0D0D0'       // 边框颜色
             };
             
             // 边框样式
             const thinBorder = {
-                top: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-                left: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-                bottom: { style: 'thin', color: { argb: 'FFD0D0D0' } },
-                right: { style: 'thin', color: { argb: 'FFD0D0D0' } }
+                top: { style: 'thin', color: { argb: colors.border } },
+                left: { style: 'thin', color: { argb: colors.border } },
+                bottom: { style: 'thin', color: { argb: colors.border } },
+                right: { style: 'thin', color: { argb: colors.border } }
             };
             
             sheets.forEach(sheet => {
@@ -2211,7 +2246,7 @@
                     ws.addRow([]);
                     currentRow++;
                     
-                    // 数据行（带颜色）
+                    // 数据行（行首列带颜色）
                     for (let i = 1; i < sheet.data.length; i++) {
                         const rowData = sheet.data[i];
                         const row = ws.addRow(rowData);
@@ -2229,13 +2264,159 @@
                             bgColor = colors.blueBg;
                         }
                         
-                        row.eachCell(cell => {
+                        // 行首列着色，其他列白色
+                        row.eachCell((cell, colNumber) => {
                             cell.border = thinBorder;
-                            if (bgColor) {
+                            if (colNumber === 1 && bgColor) {
+                                // 行首列带颜色
                                 cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
+                            } else {
+                                // 其他列白色背景
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
                             }
                         });
                         currentRow++;
+                    }
+                } else if (sheetType === 'titled_red') {
+                    // 红冲发票清单：标题行红色字体
+                    const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '']);
+                    titleRow.getCell(1).font = { bold: true, size: 13, color: { argb: colors.redHeaderFont } };
+                    ws.mergeCells(1, 1, 1, 7);
+                    titleRow.getCell(1).alignment = { horizontal: 'left' };
+                    currentRow++;
+                    
+                    // 空行
+                    ws.addRow([]);
+                    currentRow++;
+                    
+                    // 表头行
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.redHeaderFont } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        currentRow++;
+                        
+                        // 数据行（整行白色）
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                // 数字列设格式
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                            });
+                            currentRow++;
+                        }
+                    }
+                } else if (sheetType === 'titled_urgent') {
+                    // 催票清单：紧急程度列着色
+                    const titleRow = ws.addRow([sheet.title, '', '', '', '', '']);
+                    titleRow.getCell(1).font = { bold: true, size: 13 };
+                    ws.mergeCells(1, 1, 1, 6);
+                    titleRow.getCell(1).alignment = { horizontal: 'left' };
+                    currentRow++;
+                    
+                    // 空行
+                    ws.addRow([]);
+                    currentRow++;
+                    
+                    // 表头行
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        currentRow++;
+                        
+                        // 数据行（紧急程度列着色）
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            const urgentText = String(rowData[5] || '');
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                // 数字列设格式
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 紧急程度列（F列=第6列）着色
+                                if (colNumber === 6) {
+                                    if (urgentText === '紧急') {
+                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.redBg } };
+                                        cell.font = { color: { argb: colors.redText } };
+                                    } else if (urgentText === '一般') {
+                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.yellowBg } };
+                                        cell.font = { color: { argb: colors.yellowText } };
+                                    } else {
+                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.greenBg } };
+                                        cell.font = { color: { argb: colors.greenText } };
+                                    }
+                                }
+                            });
+                            currentRow++;
+                        }
+                    }
+                } else if (sheetType === 'titled_replace') {
+                    // 替换方案：是否同分类列着色
+                    const titleRow = ws.addRow([sheet.title, '', '', '', '', '', '', '', '', '', '', '']);
+                    titleRow.getCell(1).font = { bold: true, size: 13 };
+                    ws.mergeCells(1, 1, 1, 12);
+                    titleRow.getCell(1).alignment = { horizontal: 'left' };
+                    currentRow++;
+                    
+                    // 空行
+                    ws.addRow([]);
+                    currentRow++;
+                    
+                    // 表头行
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        currentRow++;
+                        
+                        // 数据行（是否同分类列着色）
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            const isSameCategory = String(rowData[11] || '');
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                // 数字列设格式
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 是否同分类列（L列=第12列）着色
+                                if (colNumber === 12) {
+                                    if (isSameCategory === '是') {
+                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.greenBg } };
+                                        cell.font = { color: { argb: colors.greenText } };
+                                    } else {
+                                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                    }
+                                }
+                            });
+                            currentRow++;
+                        }
                     }
                 } else if (sheetType === 'titled' || sheetType === 'titled_formula') {
                     // 标题行：合并单元格
@@ -2273,37 +2454,131 @@
                             const rowData = sheet.data[i];
                             const row = ws.addRow(rowData);
                             
-                            // 检查是否需要着色（基于核查结果列）
-                            let bgColor = null;
-                            const lastCell = String(rowData[rowData.length - 1] || '');
-                            if (lastCell.includes('❌ 开超') || lastCell.includes('无进项')) {
-                                bgColor = colors.redBg;
-                            } else if (lastCell.includes('⚠️ 进项不够')) {
-                                bgColor = colors.yellowBg;
-                            } else if (lastCell.includes('✅ 正常') || lastCell.includes('进项够')) {
-                                bgColor = colors.greenBg;
-                            } else if (lastCell.includes('📥 有进项未开销项') || lastCell.includes('未开销项')) {
-                                bgColor = colors.blueBg;
-                            }
-                            
                             row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                                 cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
                                 // 数字列设格式
                                 if (typeof cell.value === 'number') {
                                     cell.numFmt = '#,##0.00';
                                 }
-                                // 检查倒数第二列是否是数字（差额、需补金额等）
-                                if (colNumber === rowData.length - 1 && typeof cell.value === 'number') {
-                                    cell.numFmt = '#,##0.00';
-                                    if (cell.value < 0) {
-                                        cell.font = { color: { argb: 'FFC00000' } };
-                                    }
-                                }
-                                if (bgColor) {
-                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-                                }
                             });
                             currentRow++;
+                        }
+                    }
+                } else if (sheetType === 'data_red') {
+                    // 开超-无进项：核查结果列(E列=第5列)着红色
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 核查结果列(E列=第5列)着红色
+                                if (colNumber === 5) {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.redBg } };
+                                    cell.font = { color: { argb: colors.redText } };
+                                }
+                            });
+                        }
+                    }
+                } else if (sheetType === 'data_yellow') {
+                    // 开超-进项不够：核查结果列(J列=第10列)着黄色
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 核查结果列(J列=第10列)着黄色
+                                if (colNumber === 10) {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.yellowBg } };
+                                    cell.font = { color: { argb: colors.yellowText } };
+                                }
+                            });
+                        }
+                    }
+                } else if (sheetType === 'data_green') {
+                    // 正常-进项够：核查结果列(I列=第9列)着绿色
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 核查结果列(I列=第9列)着绿色
+                                if (colNumber === 9) {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.greenBg } };
+                                    cell.font = { color: { argb: colors.greenText } };
+                                }
+                            });
+                        }
+                    }
+                } else if (sheetType === 'data_blue') {
+                    // 有进项未开销项：核查结果列(E列=第5列)着蓝色
+                    if (sheet.data.length > 0) {
+                        const headerRow = ws.addRow(sheet.data[0]);
+                        headerRow.eachCell(cell => {
+                            cell.font = { bold: true, color: { argb: colors.headerFont }, size: 11 };
+                            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.headerBg } };
+                            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+                            cell.border = thinBorder;
+                        });
+                        
+                        for (let i = 1; i < sheet.data.length; i++) {
+                            const rowData = sheet.data[i];
+                            const row = ws.addRow(rowData);
+                            
+                            row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+                                cell.border = thinBorder;
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+                                if (typeof cell.value === 'number') {
+                                    cell.numFmt = '#,##0.00';
+                                }
+                                // 核查结果列(E列=第5列)着蓝色
+                                if (colNumber === 5) {
+                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.blueBg } };
+                                    cell.font = { color: { argb: colors.blueText } };
+                                }
+                            });
                         }
                     }
                 } else {
@@ -2323,32 +2598,13 @@
                             const rowData = sheet.data[i];
                             const row = ws.addRow(rowData);
                             
-                            // 检查是否需要着色
-                            let bgColor = null;
-                            const lastCell = String(rowData[rowData.length - 1] || '');
-                            if (lastCell.includes('❌') || lastCell.includes('无进项') || lastCell.includes('已红冲') || lastCell.includes('红冲')) {
-                                bgColor = colors.redBg;
-                            } else if (lastCell.includes('⚠️') || lastCell.includes('不够')) {
-                                bgColor = colors.yellowBg;
-                            } else if (lastCell.includes('✅') || lastCell.includes('正常')) {
-                                bgColor = colors.greenBg;
-                            } else if (lastCell.includes('📥') || lastCell.includes('未开销项')) {
-                                bgColor = colors.blueBg;
-                            }
-                            
                             row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
                                 cell.border = thinBorder;
-                                // 数字列设格式
+                                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
                                 if (typeof cell.value === 'number') {
                                     cell.numFmt = '#,##0.00';
                                 }
                             });
-                            
-                            if (bgColor) {
-                                row.eachCell(cell => {
-                                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgColor } };
-                                });
-                            }
                         }
                     }
                 }
