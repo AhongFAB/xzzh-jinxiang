@@ -1,4 +1,4 @@
-const CACHE_NAME = 'jinxiang-v4';
+const CACHE_NAME = 'jinxiang-v5';
 const ASSETS = [
     './index.html',
     'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
