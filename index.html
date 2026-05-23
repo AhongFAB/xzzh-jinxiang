@@ -14,6 +14,33 @@
     <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
     <style>
+        :root {
+    --bg: #0a0a1a;
+    --bg-gradient: linear-gradient(135deg, #0a0a1a 0%, #0d1b2a 30%, #1b2838 60%, #0a0a1a 100%);
+    --glass: rgba(255, 255, 255, 0.06);
+    --glass-strong: rgba(255, 255, 255, 0.10);
+    --glass-border: rgba(255, 255, 255, 0.12);
+    --glass-highlight: rgba(255, 255, 255, 0.18);
+    --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.2);
+    --blur: 20px;
+    --blur-strong: 40px;
+    --text-primary: rgba(255, 255, 255, 0.92);
+    --text-secondary: rgba(255, 255, 255, 0.60);
+    --text-muted: rgba(255, 255, 255, 0.38);
+    --primary: #4facfe;
+    --primary-dark: #2d8cf0;
+    --primary-glow: rgba(79, 172, 254, 0.25);
+    --success: #43e97b;
+    --success-dark: #38d96a;
+    --warning: #ffa726;
+    --danger: #ff5252;
+    --border: rgba(255, 255, 255, 0.08);
+    --input-bg: rgba(255, 255, 255, 0.05);
+    --input-border: rgba(255, 255, 255, 0.12);
+    --br: 20px;
+    --br-sm: 14px;
+}
+
         * {
             margin: 0;
             padding: 0;
@@ -69,14 +96,8 @@ body::before {
     gap: 14px;
 }
 header::before, .
-header h1, .
-header h1::before, 
-header p, .
-        
         .
-        
-        
-        
+
         .
         
         .main-content {
@@ -209,17 +230,7 @@ header p, .
     transition: all 0.3s ease;
     border: none;
 }
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+
         .btn-secondary:hover {
             background: rgba(148,163,184,.3);
             transform: translateY(-2px);
@@ -439,13 +450,7 @@ header p, .
             background: rgba(59,130,246,.5);
             border-radius: 3px;
         }
-        
-        
-        
-        
-        
-        
-        
+
         .tab-btn .badge {
             display: inline-block;
             padding: 2px 8px;
@@ -1493,9 +1498,7 @@ header p, .
             
             return result;
         }
-        
 
-        
         // 生成产品键
         function makeKey(productName, specModel) {
             return `${productName}|${specModel || ''}`;
