@@ -777,11 +777,40 @@ header::before, .
     color: var(--text-muted);
 }
 
+/* 统一返回按钮样式 - 深色液态玻璃 */
+.back-btn {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  z-index: 9999;
+  padding: 8px 20px;
+  border-radius: 20px;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #38bdf8;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+.back-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.6);
+  box-shadow: 0 4px 20px rgba(56, 189, 248, 0.2);
+}
     </style>
 </head>
 <body>
 
-    <header class="header">
+    
+<a class="back-btn" onclick="if(window.history.length>1){history.back()}else{location.href='https://ahongfab.github.io/xzzh-zhongtai/tax.html'}" href="javascript:void(0)">← 返回上级</a>
+<header class="header">
         <a href="https://ahongfab.github.io/xzzh-portal/" class="back-to-portal" title="返回首页">&#8592;</a>
         <div><h1>进项发票核查工具</h1>
         <p>开票前进项智能匹配系统</p></div>
